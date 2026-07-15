@@ -1,0 +1,680 @@
+// QUASTECH OS — Prisma schema (MySQL 8) — per SRS v2.0 Ch. 5
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  BRANCH_ADMIN
+  INSTRUCTOR
+  STUDENT
+}
+
+enum LearnerState {
+  LEAD
+  ENQUIRY
+  ENROLLED
+  ACTIVE
+  COMPLETED
+  DROPPED
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum MaterialType {
+  VIDEO
+  PDF
+  QUIZ
+  ASSIGNMENT
+  LINK
+  LIVE
+}
+
+enum EnrollStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+  EXPIRED
+}
+
+enum PayMode {
+  CASH
+  UPI
+  CHEQUE
+  BANK
+  ONLINE // Razorpay post-completion — same table, no rework
+}
+
+enum SubStatus {
+  IN_PROGRESS
+  PENDING
+  EVALUATED
+  PUBLISHED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// ─── Tenancy ────────────────────────────────────────────────────────
+model Organization {
+  id             String   @id @default(uuid())
+  name           String
+  receiptPrefix  String   @default("RCP")
+  branding       Json?
+  storageQuotaGb Int      @default(40)
+  createdAt      DateTime @default(now())
+
+  branches Branch[]
+  users    User[]
+  courses  Course[]
+}
+
+model Branch {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  city           String
+  state          String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  users        User[]
+  batches      Batch[]
+
+  @@index([organizationId, state, city])
+}
+
+// ─── Users (all 5 roles in one table) ───────────────────────────────
+model User {
+  id                 String        @id @default(uuid())
+  organizationId     String
+  branchId           String?
+  role               Role
+  name               String
+  email              String
+  phone              String?
+  passwordHash       String
+  mustChangePassword Boolean       @default(false)
+  permissions        Json? // extra capabilities granted to instructors by an admin
+  lifecycle          LearnerState? // students/leads only
+  profile            Json? // 360° custom fields
+  failedAttempts     Int           @default(0)
+  lockedUntil        DateTime?
+  isActive           Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  branch        Branch?        @relation(fields: [branchId], references: [id])
+  refreshTokens RefreshToken[]
+  enrollments   Enrollment[]   @relation("LearnerEnrollments")
+  notifications Notification[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId, role, branchId])
+  @@index([organizationId, phone])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  familyId  String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model OtpCode {
+  id         String    @id @default(uuid())
+  email      String
+  codeHash   String
+  purpose    String    @default("LOGIN") // LOGIN | RESET
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, purpose])
+}
+
+// ─── Learning structure (Phase 2 endpoints; schema fixed now) ──────
+model Course {
+  id             String       @id @default(uuid())
+  organizationId String
+  branchId       String?
+  title          String
+  description    String?      @db.Text
+  thumbnailKey   String?
+  category       String?
+  categoryId     String?
+  status         CourseStatus @default(DRAFT)
+  visibility     Visibility   @default(PRIVATE)
+  createdAt      DateTime     @default(now())
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  courseModules CourseModule[]
+  batches       Batch[]
+  enrollments   Enrollment[]
+
+  @@index([organizationId, status])
+}
+
+model Module {
+  id             String    @id @default(uuid())
+  organizationId String
+  title          String
+  createdAt      DateTime  @default(now())
+  sections       Section[]
+  courseModules  CourseModule[]
+
+  @@index([organizationId])
+}
+
+model CourseModule {
+  courseId String
+  moduleId String
+  position Int
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [id])
+
+  @@id([courseId, moduleId])
+}
+
+model Section {
+  id        String     @id @default(uuid())
+  moduleId  String
+  title     String
+  position  Int
+  module    Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  materials Material[]
+}
+
+model Material {
+  id             String       @id @default(uuid())
+  sectionId      String
+  type           MaterialType
+  title          String
+  fileKey        String? // storage key — NEVER a public URL
+  sizeBytes      BigInt?
+  durationSec    Int?
+  status         String       @default("processing") // processing | published
+  position       Int
+  isDownloadable Boolean      @default(false)
+  quizSchema     Json?
+  section        Section      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  submissions    Submission[]
+  variants       MaterialVariant[]
+
+  @@index([sectionId, position])
+}
+
+model Batch {
+  id           String    @id @default(uuid())
+  courseId     String
+  branchId     String
+  instructorId String?
+  name         String
+  startDate    DateTime
+  endDate      DateTime?
+  capacity     Int?
+  createdAt    DateTime  @default(now())
+
+  course      Course         @relation(fields: [courseId], references: [id])
+  branch      Branch         @relation(fields: [branchId], references: [id])
+  sessions    ClassSession[]
+  enrollments Enrollment[]
+  recordings  Recording[]
+
+  @@index([courseId])
+  @@index([branchId])
+  @@index([instructorId])
+}
+
+model ClassSession {
+  id          String       @id @default(uuid())
+  batchId     String
+  title       String
+  scheduledAt DateTime
+  startedAt   DateTime?
+  meetLink    String?
+  batch       Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  attendance  Attendance[]
+
+  @@index([batchId, scheduledAt])
+}
+
+model Attendance {
+  sessionId  String
+  learnerId  String
+  present    Boolean
+  markedById String
+  markedAt   DateTime @default(now())
+
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, learnerId])
+  @@index([learnerId])
+}
+
+// ─── Enrollment + Fees (Phase 1 core) ───────────────────────────────
+model Enrollment {
+  id           String       @id @default(uuid())
+  learnerId    String
+  courseId     String
+  batchId      String
+  assignedById String
+  enrolledAt   DateTime     @default(now())
+  status       EnrollStatus @default(ACTIVE)
+  accessExpiry DateTime?
+  progressPct  Decimal      @default(0) @db.Decimal(5, 2)
+
+  learner    User        @relation("LearnerEnrollments", fields: [learnerId], references: [id])
+  course     Course      @relation(fields: [courseId], references: [id])
+  batch      Batch       @relation(fields: [batchId], references: [id])
+  feeAccount FeeAccount?
+
+  @@unique([learnerId, batchId]) // DB-enforced: no duplicate enrollment
+  @@index([batchId, status])
+  @@index([courseId])
+}
+
+model FeeAccount {
+  id            String       @id @default(uuid())
+  enrollmentId  String       @unique
+  totalFee      Decimal      @db.Decimal(10, 2)
+  discount      Decimal      @default(0) @db.Decimal(10, 2)
+  pendingAmount Decimal      @db.Decimal(10, 2) // maintained transactionally
+  installments  Json?
+  notes         String?      @db.Text
+
+  enrollment Enrollment   @relation(fields: [enrollmentId], references: [id])
+  payments   FeePayment[]
+}
+
+model FeePayment {
+  id           String   @id @default(uuid())
+  feeAccountId String
+  amount       Decimal  @db.Decimal(10, 2)
+  mode         PayMode
+  referenceNo  String?
+  receiptNo    String   @unique
+  receivedById String
+  receivedAt   DateTime @default(now())
+
+  feeAccount FeeAccount @relation(fields: [feeAccountId], references: [id])
+
+  @@index([feeAccountId])
+  @@index([receivedAt])
+}
+
+model ReceiptCounter {
+  organizationId String
+  year           Int
+  seq            Int    @default(0)
+
+  @@id([organizationId, year])
+}
+
+// ─── Assessments (Phase 4; schema fixed now) ────────────────────────
+model Submission {
+  id         String    @id @default(uuid())
+  materialId String
+  learnerId  String
+  fileKey    String?
+  answers    Json?
+  marks      Decimal?  @db.Decimal(6, 2)
+  feedback   String?   @db.Text
+  status       SubStatus @default(PENDING)
+  isLate       Boolean   @default(false)
+  attemptsUsed Int       @default(0)
+  startedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  material Material @relation(fields: [materialId], references: [id])
+
+  @@unique([materialId, learnerId])
+  @@index([learnerId])
+}
+
+model Certificate {
+  id           String    @id @default(uuid())
+  enrollmentId String
+  verifyCode   String    @unique
+  pdfKey       String
+  issuedAt     DateTime  @default(now())
+  revokedAt    DateTime?
+}
+
+// ─── CRM / Comms / Ops ──────────────────────────────────────────────
+model Enquiry {
+  id             String   @id @default(uuid())
+  organizationId String
+  branchId       String?
+  name           String
+  email          String?
+  phone          String?
+  courseInterest String?
+  source         String?
+  notes          String?  @db.Text
+  nextFollowUp   DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  body      String?   @db.Text
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model ActivityLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  actorId        String
+  action         String // e.g. ENROLLMENT_CREATE, FEE_PAYMENT_RECORD
+  entity         String
+  entityId       String
+  before         Json?
+  after          Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([entity, entityId])
+}
+
+// ─── Job queue (no Redis — SRS Ch. 12.10) ───────────────────────────
+model JobQueue {
+  id          String    @id @default(uuid())
+  type        String
+  payload     Json
+  runAt       DateTime  @default(now())
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  lockedBy    String?
+  lastError   String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+}
+
+// ─── Dev mail outbox (console mailer — SRS Ch. 9.1) ─────────────────
+model Outbox {
+  id        String   @id @default(uuid())
+  toEmail   String
+  subject   String
+  body      String   @db.Text
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([toEmail, createdAt])
+}
+
+// ─── Progress tracking (SRS 12.6) ───────────────────────────────────
+model MaterialProgress {
+  enrollmentId String
+  materialId   String
+  completedAt  DateTime @default(now())
+
+  @@id([enrollmentId, materialId]) // composite PK = idempotent upsert
+  @@index([materialId])
+}
+
+// ─── Recordings (SRS 3.7) ───────────────────────────────────────────
+model Recording {
+  id           String   @id @default(uuid())
+  batchId      String
+  sessionId    String?
+  title        String
+  fileKey      String
+  sizeBytes    BigInt?
+  status       String   @default("processing") // processing | published | pending_approval
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  batch Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, createdAt])
+}
+
+// ─── Feedback (SRS 3.10) ────────────────────────────────────────────
+model FeedbackForm {
+  id             String   @id @default(uuid())
+  organizationId String
+  title          String
+  formSchema     Json // rating scales / MCQ / text — form-builder JSON
+  targetType     String // SESSION | BATCH | COURSE
+  targetId       String
+  allowAnonymous Boolean  @default(false)
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  responses FeedbackResponse[]
+
+  @@index([organizationId, targetType, targetId])
+}
+
+model FeedbackResponse {
+  id           String   @id @default(uuid())
+  formId       String
+  respondentId String? // null when anonymous
+  answers      Json
+  rating       Int? // 1–5 headline rating (trainer rating aggregates)
+  createdAt    DateTime @default(now())
+
+  form FeedbackForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+}
+
+// ─── Campaigns & Banners (SRS 3.12) ─────────────────────────────────
+model Campaign {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  subject        String
+  body           String    @db.Text
+  audienceFilter Json // { branchId?, courseId?, batchId?, lifecycle? }
+  status         String    @default("DRAFT") // DRAFT | QUEUED | SENDING | SENT
+  scheduledAt    DateTime?
+  recipientCount Int       @default(0)
+  createdById    String
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, status])
+}
+
+model Banner {
+  id             String    @id @default(uuid())
+  organizationId String
+  title          String
+  imageKey       String
+  link           String?
+  position       Int       @default(0)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  isActive       Boolean   @default(true)
+
+  @@index([organizationId, isActive, position])
+}
+
+// ─── Merged features (from QUASTECHLMS PRE — rebuilt on Prisma) ─────
+model Category {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  @@unique([organizationId, name])
+}
+
+model Announcement {
+  id             String   @id @default(uuid())
+  organizationId String
+  title          String
+  message        String   @db.Text
+  audience       String   @default("ALL") // ALL | COURSE | BATCH
+  courseId       String?
+  batchId        String?
+  createdById    String
+  createdAt      DateTime @default(now())
+  @@index([organizationId, createdAt])
+}
+
+model CourseQnA {
+  id         String    @id @default(uuid())
+  courseId   String
+  materialId String?
+  userId     String
+  parentId   String? // null = question, set = answer
+  content    String    @db.Text
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  @@index([courseId, materialId, createdAt])
+  @@index([parentId])
+}
+
+model LessonNote {
+  id           String   @id @default(uuid())
+  userId       String
+  materialId   String
+  enrollmentId String
+  content      String   @db.Text
+  timestampSec Int      @default(0)
+  createdAt    DateTime @default(now())
+  @@index([userId, materialId])
+}
+
+model CourseReview {
+  id        String   @id @default(uuid())
+  courseId  String
+  learnerId String
+  rating    Int
+  title     String?
+  comment   String?  @db.Text
+  createdAt DateTime @default(now())
+  @@unique([courseId, learnerId])
+  @@index([courseId])
+}
+
+model Badge {
+  id           String @id @default(uuid())
+  code         String @unique // FIRST_STEPS | QUIZ_MASTER | COURSE_CHAMPION | CONSISTENT_10
+  name         String
+  icon         String
+  description  String?
+  pointsReward Int    @default(0)
+  users        UserBadge[]
+}
+
+model UserBadge {
+  userId    String
+  badgeId   String
+  awardedAt DateTime @default(now())
+  badge     Badge    @relation(fields: [badgeId], references: [id])
+  @@id([userId, badgeId])
+}
+
+model PointEntry {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  points         Int
+  reason         String
+  createdAt      DateTime @default(now())
+  @@index([organizationId, userId])
+}
+
+/// Multiple quality versions of one video (e.g. 480p / 720p / 1080p uploads)
+model MaterialVariant {
+  id         String   @id @default(uuid())
+  materialId String
+  label      String // "1080p" | "720p" | "480p" | "Data saver"
+  heightPx   Int      @default(720)
+  fileKey    String
+  sizeBytes  BigInt?
+  createdAt  DateTime @default(now())
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([materialId, label])
+  @@index([materialId, heightPx])
+}
+
+/// A third-party service configured from the Super Admin panel (SMTP, WhatsApp, Razorpay…).
+/// Secrets are AES-256-GCM encrypted at rest — never stored or returned in plain text.
+model Integration {
+  id             String    @id @default(uuid())
+  organizationId String
+  provider       String // SMTP | WHATSAPP | RAZORPAY | ZOOM | STORAGE_S3 | FIREBASE | SMS
+  name           String // friendly label, e.g. "Gmail — quastechdevelopers"
+  config         Json // non-secret fields (host, port, from, keyId…)
+  secrets        String    @db.Text // encrypted blob
+  isActive       Boolean   @default(false) // the one currently in use for this provider
+  status         String    @default("UNTESTED") // UNTESTED | OK | FAILED
+  lastTestedAt   DateTime?
+  lastError      String?   @db.Text
+  version        Int       @default(1)
+  createdById    String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  history IntegrationHistory[]
+
+  @@index([organizationId, provider, isActive])
+}
+
+/// Every change is snapshotted so an old configuration can be restored later.
+model IntegrationHistory {
+  id             String   @id @default(uuid())
+  integrationId  String
+  organizationId String
+  provider       String
+  name           String
+  config         Json
+  secrets        String   @db.Text
+  action         String // CREATED | UPDATED | ACTIVATED | DEACTIVATED | RESTORED | DISABLED
+  note           String?
+  changedById    String
+  changedAt      DateTime @default(now())
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, provider, changedAt])
+}

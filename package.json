@@ -1,0 +1,41 @@
+{
+  "name": "quastech-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "worker": "tsx worker.ts",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "db:demo": "tsx prisma/seed-demo.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.19.0",
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.9.0",
+    "next": "^14.2.13",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8",
+    "dotenv": "^16.4.5",
+    "pdfkit": "^0.15.0",
+    "nodemailer": "^6.9.14"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.5",
+    "prisma": "^5.19.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "@types/pdfkit": "^0.13.4",
+    "@types/nodemailer": "^6.4.15"
+  }
+}
