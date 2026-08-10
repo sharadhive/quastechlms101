@@ -22,7 +22,7 @@ export default function Analytics() {
     <div className="card">
       <h2 style={{ marginTop: 0 }}>Enrollment trend (by branch, monthly)</h2>
       {trend && <table><thead><tr><th>Month</th><th>Enrollments per branch</th></tr></thead><tbody>
-        {Object.entries(trend.trend).map(([ym, byBranch]: any) => <tr key={ym}><td>{ym}</td><td>{Object.values(byBranch).reduce((a: any, b: any) => a + b, 0)} total</td></tr>)}
+        {Object.entries(trend.trend).map(([ym, byBranch]: any) => <tr key={ym}><td>{ym}</td><td>{Object.values(byBranch as Record<string, number>).reduce((a, b) => a + b, 0)} total</td></tr>)}
       </tbody></table>}
     </div>
     <div className="card">

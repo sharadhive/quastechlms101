@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError } from 'zod';
 
 export class ApiError extends Error {
@@ -15,7 +15,7 @@ export const notFound = (msg = 'Not found') => new ApiError(404, msg);
 export const badRequest = (msg = 'Bad request') => new ApiError(400, msg);
 export const conflict = (msg = 'Conflict') => new ApiError(409, msg);
 
-type Handler<Ctx> = (req: Request, ctx: Ctx) => Promise<Response>;
+type Handler<Ctx> = (req: NextRequest, ctx: Ctx) => Promise<Response>;
 
 /** Wrap every route handler: uniform error JSON, Zod messages, Prisma unique-violation mapping. */
 export function withHandler<Ctx = unknown>(fn: Handler<Ctx>): Handler<Ctx> {
