@@ -21,7 +21,7 @@ export const GET = withHandler(async (req: NextRequest) => {
           : { in: ['ADMIN', 'BRANCH_ADMIN', 'INSTRUCTOR'] as any };
       })(),
     },
-    select: { id: true, name: true, email: true, phone: true, role: true, branchId: true, isActive: true, createdAt: true },
+    select: { id: true, name: true, email: true, phone: true, role: true, branchId: true, profile: true, isActive: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
   });
   return NextResponse.json({ team });
@@ -52,10 +52,11 @@ export const POST = withHandler(async (req: NextRequest) => {
       name: data.name,
       email: data.email,
       phone: data.phone,
+      profile: { tempPassword },
       passwordHash: await bcrypt.hash(tempPassword, 12),
       mustChangePassword: true,
     },
-    select: { id: true, name: true, email: true, role: true, branchId: true },
+    select: { id: true, name: true, email: true, role: true, branchId: true, profile: true },
   });
 
   await enqueue('EMAIL_WELCOME', {
@@ -65,6 +66,6 @@ export const POST = withHandler(async (req: NextRequest) => {
     tempPassword,
   });
 
-  return NextResponse.json({ user }, { status: 201 });
+  return NextResponse.json({ user, tempPassword }, { status: 201 });
 });
 

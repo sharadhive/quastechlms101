@@ -32,13 +32,13 @@ export function setAuthCookies(
   res.cookies.set(REFRESH_COOKIE, refreshRaw, {
     ...base,
     maxAge: refreshMaxAgeSec,
-    path: '/api/auth', // refresh cookie only travels to auth endpoints
+    path: '/', // must be '/' so the middleware can read it for server-side refresh
   });
   return res;
 }
 
 export function clearAuthCookies(res: NextResponse) {
   res.cookies.set(ACCESS_COOKIE, '', { ...base, maxAge: 0 });
-  res.cookies.set(REFRESH_COOKIE, '', { ...base, maxAge: 0, path: '/api/auth' });
+  res.cookies.set(REFRESH_COOKIE, '', { ...base, maxAge: 0, path: '/' });
   return res;
 }

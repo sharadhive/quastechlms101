@@ -33,7 +33,7 @@ export const GET = withHandler(async (req: NextRequest) => {
     prisma.user.count({ where }),
     prisma.user.findMany({
       where,
-      select: { id: true, name: true, email: true, phone: true, lifecycle: true, branchId: true, createdAt: true },
+      select: { id: true, name: true, email: true, phone: true, lifecycle: true, branchId: true, profile: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -60,6 +60,7 @@ export const POST = withHandler(async (req: NextRequest) => {
     session.role === 'BRANCH_ADMIN' ? session.branchId : (data.branchId ?? session.branchId);
 
   const tempPassword = crypto.randomBytes(6).toString('base64url');
+  const profileData = { ...((data.profile as any) ?? {}), tempPassword };
   const learner = await prisma.user.create({
     data: {
       organizationId: session.organizationId,
@@ -69,11 +70,11 @@ export const POST = withHandler(async (req: NextRequest) => {
       name: data.name,
       email: data.email,
       phone: data.phone,
-      profile: (data.profile as any) ?? undefined,
+      profile: profileData,
       passwordHash: await bcrypt.hash(tempPassword, 12),
       mustChangePassword: true,
     },
-    select: { id: true, name: true, email: true, phone: true, branchId: true },
+    select: { id: true, name: true, email: true, phone: true, branchId: true, profile: true },
   });
 
   // tempPassword returned once so the enrollment flow can include it in the welcome email
