@@ -10,7 +10,7 @@ const schema = z.object({
   fileName: z.string().min(1),
   contentType: z.string().min(3),
   sizeBytes: z.number().positive().max(4 * 1024 * 1024 * 1024), // 4GB cap
-  purpose: z.enum(['material', 'recording', 'assignment', 'banner', 'document']),
+  purpose: z.enum(['material', 'recording', 'assignment', 'banner', 'document', 'thumbnail']),
 });
 
 export const POST = withHandler(async (req: NextRequest) => {

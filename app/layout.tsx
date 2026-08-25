@@ -1,6 +1,6 @@
 import './globals.css';
 
-export const metadata = { title: 'QUASTECH OS', description: 'EdTech LMS + ERP + CRM' };
+export const metadata = { title: 'QUASTECH LMS', description: 'EdTech LMS + ERP + CRM' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

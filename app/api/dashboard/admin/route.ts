@@ -19,7 +19,10 @@ export const GET = withHandler(async (req: NextRequest) => {
   const branchScope: any = branchIds ? { branchId: { in: branchIds } } : {};
   const userBranchScope: any = branchIds ? { branchId: { in: branchIds } } : {};
   const orgCourse = { organizationId: scope.organizationId };
-  const enrWhere = { course: orgCourse, batch: branchScope };
+  // When no branch filter, don't filter by batch at all (batch is optional on Enrollment)
+  const enrWhere: any = branchIds
+    ? { course: orgCourse, batch: { branchId: { in: branchIds } } }
+    : { course: orgCourse };
 
   const [
     enrollmentsThisMonth, enrollmentsPrevMonth, activeBatches, pendingEvaluations,
@@ -48,7 +51,7 @@ export const GET = withHandler(async (req: NextRequest) => {
       where: { receivedAt: { gte: d30 }, feeAccount: { enrollment: enrWhere } } }),
     prisma.enrollment.findMany({
       where: enrWhere,
-      select: { status: true, progressPct: true,
+      select: { status: true, progressPct: true, batchId: true,
         course: { select: { title: true } }, batch: { select: { branchId: true } } },
     }),
     prisma.branch.findMany({ where: { organizationId: scope.organizationId }, select: { id: true, name: true } }),
@@ -95,7 +98,9 @@ export const GET = withHandler(async (req: NextRequest) => {
   let active = 0, completed = 0;
   for (const e of enrollments) {
     courseMap.set(e.course.title, (courseMap.get(e.course.title) ?? 0) + 1);
-    branchMap.set(e.batch.branchId, (branchMap.get(e.batch.branchId) ?? 0) + 1);
+    // batch is optional — only count branch if batch exists
+    const bid = e.batch?.branchId;
+    if (bid) branchMap.set(bid, (branchMap.get(bid) ?? 0) + 1);
     statusMap.set(e.status, (statusMap.get(e.status) ?? 0) + 1);
     if (e.status === 'ACTIVE') active++;
     if (e.status === 'COMPLETED') completed++;

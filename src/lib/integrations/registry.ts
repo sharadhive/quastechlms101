@@ -87,6 +87,27 @@ export const PROVIDERS: ProviderDef[] = [
     ],
   },
   {
+    provider: 'EASEBUZZ',
+    name: 'Easebuzz (online payments)',
+    icon: '💳',
+    category: 'Payments',
+    summary: 'Lets students buy courses online via Easebuzz payment gateway (UPI, cards, net-banking, wallets).',
+    setupSteps: [
+      'Log in to the Easebuzz Dashboard → Settings → Get your Merchant Key and Salt.',
+      'Paste the Key and Salt below.',
+      'Set mode to "test" for sandbox testing, "live" for production.',
+      'Test, then activate — the course marketplace uses the active Easebuzz configuration.',
+    ],
+    docsUrl: 'https://docs.easebuzz.in/',
+    testable: true,
+    fields: [
+      { key: 'merchantKey', label: 'Merchant Key', type: 'text', required: true, placeholder: 'Your Easebuzz merchant key' },
+      { key: 'salt', label: 'Salt', type: 'password', secret: true, required: true, placeholder: 'Your Easebuzz salt (keep secret)' },
+      { key: 'merchantSubAccountId', label: 'Sub-Account ID (optional)', type: 'text', placeholder: 'For sub-merchants only' },
+      { key: 'mode', label: 'Mode', type: 'select', options: ['test', 'live'], default: 'test', help: 'Start in test mode until everything works' },
+    ],
+  },
+  {
     provider: 'ZOOM',
     name: 'Zoom (auto meetings)',
     icon: '🎥',

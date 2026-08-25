@@ -23,6 +23,8 @@ const createSchema = z.object({
   description: z.string().optional(),
   category: z.string().optional(),
   visibility: z.enum(['PUBLIC', 'PRIVATE']).default('PRIVATE'),
+  price: z.number().nonnegative().default(0),
+  isFree: z.boolean().default(false),
 });
 
 export const POST = withHandler(async (req: NextRequest) => {

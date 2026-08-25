@@ -37,10 +37,12 @@ export default function Courses() {
       {err && <div className="err">{err}</div>}
     </div>
     <div className="card"><table>
-      <thead><tr><th>Title</th><th>Status</th><th>Batches</th><th>Enrollments</th><th></th></tr></thead>
+      <thead><tr><th>Title</th><th>Status</th><th>Visibility</th><th>Price</th><th>Batches</th><th>Enrollments</th><th></th></tr></thead>
       <tbody>{courses.map((c) => <tr key={c.id}>
         <td>{c.title}</td>
         <td><span className={`badge ${c.status === 'PUBLISHED' ? 'green' : 'gray'}`}>{c.status}</span></td>
+        <td><span className={`badge ${c.visibility === 'PUBLIC' ? 'blue' : 'gray'}`}>{c.visibility === 'PUBLIC' ? '🌐 Public' : '🔒 Private'}</span></td>
+        <td>{c.isFree || Number(c.price) === 0 ? <span className="badge green">FREE</span> : <b>₹{Number(c.price).toLocaleString('en-IN')}</b>}</td>
         <td>{c._count.batches}</td><td>{c._count.enrollments}</td>
         <td><Link href={`/admin/courses/${c.id}`}>Open builder</Link></td>
       </tr>)}</tbody>

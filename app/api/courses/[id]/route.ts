@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { withHandler, notFound } from '@/lib/utils/errors';
 import { parseBody } from '@/lib/utils/validate';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
+import { thumbnailUrl } from '@/lib/utils/thumbnail';
 
 export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: string } }) => {
   const session = await requireRole(req, [...ADMIN_ROLES, 'INSTRUCTOR']);
@@ -28,16 +29,20 @@ export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: str
     },
   });
   if (!course) throw notFound('Course not found');
-  return NextResponse.json({ course });
+  const resolved = { ...course, thumbnailUrl: await thumbnailUrl(course.thumbnailKey) };
+  return NextResponse.json({ course: resolved });
 });
 
 const patchSchema = z.object({
   title: z.string().min(2).optional(),
+  thumbnailKey: z.string().optional(),
   categoryId: z.string().min(1).optional(),
   description: z.string().optional(),
   category: z.string().optional(),
   status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
   visibility: z.enum(['PUBLIC', 'PRIVATE']).optional(),
+  price: z.number().nonnegative().optional(),
+  isFree: z.boolean().optional(),
 });
 
 export const PATCH = withHandler(async (req: NextRequest, ctx: { params: { id: string } }) => {

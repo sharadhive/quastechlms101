@@ -56,7 +56,7 @@ export default function Shell({
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><span className="logo">Q</span> QUASTECH OS</div>
+        <div className="brand"><img src="/logo.png" alt="QUASTECH" style={{ height: 30 }} /> LMS</div>
         {allGroups.map((g, gi) => (
           <div key={gi}>
             {g.title && <div className="group">{g.title}</div>}

@@ -23,7 +23,8 @@ export const GET = withHandler(async (req: NextRequest) => {
   for (const e of enrollments) {
     const ym = e.enrolledAt.toISOString().slice(0, 7); // YYYY-MM
     trend[ym] ??= {};
-    trend[ym][e.batch.branchId] = (trend[ym][e.batch.branchId] ?? 0) + 1;
+    const bid = e.batch?.branchId ?? 'unassigned';
+    trend[ym][bid] = (trend[ym][bid] ?? 0) + 1;
   }
   return NextResponse.json({ months, trend });
 });

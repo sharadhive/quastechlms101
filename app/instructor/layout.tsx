@@ -6,6 +6,7 @@ const groups: NavGroup[] = [
     { href: '/instructor/batches', label: 'My Batches', icon: 'layers' },
     { href: '/instructor/evaluations', label: 'Evaluation Queue', icon: 'clip' },
     { href: '/instructor/qna', label: 'Q&A Queue', icon: 'bell' },
+    { href: '/instructor/notes', label: 'Student Notes', icon: 'book' },
     { href: '/instructor/recordings', label: 'My Recordings', icon: 'video' },
   ]},
 ];

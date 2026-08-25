@@ -19,7 +19,9 @@ export const GET = withHandler(async (req: NextRequest) => {
       // instructor scoping: own batches only (SRS 12.2 / RBAC matrix)
       ...(session.role === 'INSTRUCTOR' ? { instructorId: session.userId } : {}),
     },
-    include: {
+    select: {
+      id: true, name: true, startDate: true, endDate: true, capacity: true,
+      batchTime: true, schedule: true, instructorId: true,
       course: { select: { id: true, title: true } },
       branch: { select: { id: true, name: true, city: true, state: true } },
       _count: { select: { enrollments: true, sessions: true } },
@@ -37,6 +39,8 @@ const createSchema = z.object({
   startDate: z.string().datetime(),
   endDate: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
+  batchTime: z.string().optional(),
+  schedule: z.enum(['WEEKDAY', 'WEEKEND', 'CUSTOM']).optional(),
 });
 
 export const POST = withHandler(async (req: NextRequest) => {
@@ -66,6 +70,8 @@ export const POST = withHandler(async (req: NextRequest) => {
       startDate: new Date(data.startDate),
       endDate: data.endDate ? new Date(data.endDate) : null,
       capacity: data.capacity,
+      batchTime: data.batchTime,
+      schedule: data.schedule,
     },
   });
   return NextResponse.json({ batch }, { status: 201 });

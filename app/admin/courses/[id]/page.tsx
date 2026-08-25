@@ -62,11 +62,66 @@ export default function CourseBuilder() {
   const [qual, setQual] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState(''); const [err, setErr] = useState(''); const [ok, setOk] = useState('');
 
+  // ── settings state ──
+  const [showSettings, setShowSettings] = useState(false);
+  const [desc, setDesc] = useState('');
+  const [thumbPreview, setThumbPreview] = useState<string | null>(null);
+  const [thumbFile, setThumbFile] = useState<File | null>(null);
+  const [coursePrice, setCoursePrice] = useState(0);
+  const [isFree, setIsFree] = useState(false);
+  const [visibility, setVisibility] = useState<'PUBLIC' | 'PRIVATE'>('PRIVATE');
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
   const load = () => Promise.all([
-    api(`/api/courses/${id}`).then((d) => setCourse(d.course)),
+    api(`/api/courses/${id}`).then((d) => {
+      setCourse(d.course);
+      // populate settings from loaded course
+      setDesc(d.course.description ?? '');
+      setCoursePrice(Number(d.course.price ?? 0));
+      setIsFree(d.course.isFree ?? false);
+      setVisibility(d.course.visibility ?? 'PRIVATE');
+    }),
     api('/api/modules').then((d) => setLibrary(d.modules)),
   ]);
   useEffect(() => { load(); }, [id]);
+
+  // ── resolve thumbnail preview URL ──
+  useEffect(() => {
+    if (course?.thumbnailUrl && !thumbFile) {
+      setThumbPreview(course.thumbnailUrl);
+    }
+  }, [course?.thumbnailUrl]);
+
+  // ── save settings ──
+  const saveSettings = async () => {
+    setSettingsSaving(true); setErr(''); setOk('');
+    try {
+      let thumbnailKey: string | undefined;
+      if (thumbFile) {
+        thumbnailKey = await uploadFile(thumbFile, 'thumbnail');
+      }
+      const json: any = {
+        description: desc || undefined,
+        price: isFree ? 0 : coursePrice,
+        isFree,
+        visibility,
+      };
+      if (thumbnailKey) json.thumbnailKey = thumbnailKey;
+      await api(`/api/courses/${id}`, { method: 'PATCH', json });
+      setThumbFile(null);
+      setOk('Settings saved ✓');
+      load();
+    } catch (e: any) { setErr(e.message); }
+    finally { setSettingsSaving(false); }
+  };
+
+  const handleThumbSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setThumbFile(file);
+      setThumbPreview(URL.createObjectURL(file));
+    }
+  };
 
   // ── structure actions ──
   const createModule = async () => {
@@ -185,6 +240,83 @@ export default function CourseBuilder() {
         <span className="step">4 · Publish</span>
       </div>
       {err && <div className="err">{err}</div>}{ok && <div className="ok">{ok}</div>}
+    </div>
+
+    {/* ── Course Settings Panel ── */}
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        onClick={() => setShowSettings(!showSettings)}>
+        <h2 style={{ margin: 0 }}>⚙️ Course Settings</h2>
+        <span style={{ fontSize: '1.1rem', color: 'var(--muted)' }}>{showSettings ? '▾' : '▸'}</span>
+      </div>
+      {showSettings && (
+        <div style={{ marginTop: 16 }}>
+          {/* Thumbnail */}
+          <div style={{ marginBottom: 16 }}>
+            <label>Course Thumbnail</label>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginTop: 6 }}>
+              <div style={{
+                width: 200, height: 120, borderRadius: 12, overflow: 'hidden',
+                background: 'linear-gradient(135deg, #1E293B, #312E81)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'rgba(255,255,255,.4)', fontSize: '2rem', flexShrink: 0,
+                border: '2px dashed var(--border-strong)',
+              }}>
+                {thumbPreview
+                  ? <img src={thumbPreview} alt="Thumbnail" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : '📷'}
+              </div>
+              <div>
+                <input type="file" accept="image/*" onChange={handleThumbSelect} style={{ marginBottom: 6 }} />
+                <div className="muted" style={{ fontSize: '.76rem' }}>Recommended: 800×450px (16:9). JPG or PNG.</div>
+                {thumbFile && <div className="ok" style={{ fontSize: '.78rem' }}>New image selected — save to upload</div>}
+              </div>
+            </div>
+          </div>
+
+          {/* Description */}
+          <label>Description</label>
+          <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)}
+            placeholder="Describe what students will learn in this course…"
+            style={{ resize: 'vertical' }} />
+
+          {/* Price & Free/Paid */}
+          <div className="row" style={{ alignItems: 'flex-end' }}>
+            <div>
+              <label>Pricing</label>
+              <div style={{ display: 'flex', gap: 6, marginTop: 4, marginBottom: 12 }}>
+                <button className={`filter-chip${isFree ? ' active' : ''}`}
+                  onClick={() => { setIsFree(true); setCoursePrice(0); }} type="button">🆓 Free</button>
+                <button className={`filter-chip${!isFree ? ' active' : ''}`}
+                  onClick={() => setIsFree(false)} type="button">💎 Paid</button>
+              </div>
+            </div>
+            {!isFree && (
+              <div>
+                <label>Price (₹)</label>
+                <input type="number" min={0} step={1} value={coursePrice}
+                  onChange={(e) => setCoursePrice(Number(e.target.value))} placeholder="e.g. 4999" />
+              </div>
+            )}
+            <div>
+              <label>Visibility</label>
+              <select value={visibility} onChange={(e) => setVisibility(e.target.value as any)}>
+                <option value="PRIVATE">🔒 Private (internal only)</option>
+                <option value="PUBLIC">🌐 Public (shows in catalog)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 4 }}>
+            <button className="btn" onClick={saveSettings} disabled={settingsSaving}>
+              {settingsSaving ? 'Saving…' : '💾 Save Settings'}
+            </button>
+            <span className="muted" style={{ fontSize: '.78rem' }}>
+              {isFree ? 'Students can enroll for free' : coursePrice > 0 ? `Students pay ₹${coursePrice.toLocaleString('en-IN')}` : 'Set a price or mark as free'}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
 
     <div className="card">

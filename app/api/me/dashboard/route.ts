@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withHandler } from '@/lib/utils/errors';
 import { requireRole } from '@/lib/auth/rbac';
+import { thumbnailUrl } from '@/lib/utils/thumbnail';
 
 export const GET = withHandler(async (req: NextRequest) => {
   const session = await requireRole(req, ['STUDENT']);
@@ -76,8 +77,16 @@ export const GET = withHandler(async (req: NextRequest) => {
     if (idx >= 0 && idx < 56) days[idx].count++;
   }
 
+  // Resolve thumbnail URLs for continue learning courses
+  const continueLearningResolved = await Promise.all(
+    continueLearning.map(async (e) => ({
+      ...e,
+      course: { ...e.course, thumbnailUrl: await thumbnailUrl(e.course.thumbnailKey) },
+    })),
+  );
+
   return NextResponse.json({
-    continueLearning, todaysClasses, banners, unreadCount,
+    continueLearning: continueLearningResolved, todaysClasses, banners, unreadCount,
     myPoints: points._sum.points ?? 0,
     badgeCount: badges,
     certificateCount: certificates,

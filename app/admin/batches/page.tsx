@@ -11,7 +11,7 @@ export default function Batches() {
   const [instructors, setInstructors] = useState<any[]>([]);
   const [geo, setGeo] = useState({ state: '', city: '', branchId: '' });
   const [fCourse, setFCourse] = useState('');
-  const [f, setF] = useState({ courseId: '', branchId: '', instructorId: '', name: '', startDate: '' });
+  const [f, setF] = useState({ courseId: '', branchId: '', instructorId: '', name: '', startDate: '', batchTime: '', schedule: '' });
   const [err, setErr] = useState(''); const [ok, setOk] = useState('');
 
   const load = () => {
@@ -30,8 +30,11 @@ export default function Batches() {
     try {
       await api('/api/batches', { method: 'POST', json: {
         courseId: f.courseId, branchId: f.branchId, instructorId: f.instructorId || undefined,
-        name: f.name, startDate: new Date(f.startDate).toISOString() } });
-      setOk('Batch created ✓'); setF({ courseId: '', branchId: '', instructorId: '', name: '', startDate: '' }); load();
+        name: f.name, startDate: new Date(f.startDate).toISOString(),
+        batchTime: f.batchTime || undefined, schedule: f.schedule || undefined } });
+      setOk('Batch created ✓');
+      setF({ courseId: '', branchId: '', instructorId: '', name: '', startDate: '', batchTime: '', schedule: '' });
+      load();
     } catch (e: any) { setErr(e.message); }
   };
 
@@ -58,6 +61,14 @@ export default function Batches() {
       <div className="row">
         <div><label>Batch name</label><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
         <div><label>Start date</label><input type="date" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} /></div>
+        <div><label>Batch time</label><input placeholder="e.g. 10:00 AM - 12:00 PM" value={f.batchTime} onChange={(e) => setF({ ...f, batchTime: e.target.value })} /></div>
+        <div><label>Schedule</label>
+          <select value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })}>
+            <option value="">Select…</option>
+            <option value="WEEKDAY">Weekday</option>
+            <option value="WEEKEND">Weekend</option>
+            <option value="CUSTOM">Custom</option>
+          </select></div>
       </div>
       {err && <div className="err">{err}</div>}{ok && <div className="ok">{ok}</div>}
       <button className="btn" onClick={create} disabled={!f.courseId || !f.branchId || !f.name || !f.startDate}>Create</button>
@@ -74,13 +85,15 @@ export default function Batches() {
       </div>
       {batches === null ? <SkelRows /> : batches.length === 0 ? <Empty icon="🎓" text="No batches match these filters" /> : (
         <div className="tablewrap"><table>
-          <thead><tr><th>Batch</th><th>Course</th><th>Branch</th><th>City / State</th><th>Learners</th><th>Sessions</th><th></th></tr></thead>
+          <thead><tr><th>Batch</th><th>Course</th><th>Branch</th><th>City / State</th><th>Time</th><th>Schedule</th><th>Learners</th><th>Sessions</th><th></th></tr></thead>
           <tbody>{batches.map((b) => (
             <tr key={b.id}>
               <td><b>{b.name}</b></td>
               <td>{b.course.title}</td>
               <td>{b.branch.name}</td>
               <td><span className="badge blue">{b.branch.city}, {b.branch.state}</span></td>
+              <td>{b.batchTime || <span className="muted">—</span>}</td>
+              <td>{b.schedule ? <span className="badge gray">{b.schedule}</span> : <span className="muted">—</span>}</td>
               <td>{b._count.enrollments}</td>
               <td>{b._count.sessions}</td>
               <td><Link href={`/admin/batches/${b.id}`}>Open →</Link></td>

@@ -49,7 +49,7 @@ export async function api<T = any>(path: string, init?: RequestInit & { json?: u
 /** Presign → direct PUT to storage → complete. Returns the storage key (SRS 12.4). */
 export async function uploadFile(
   file: File,
-  purpose: 'material' | 'recording' | 'assignment' | 'banner' | 'document',
+  purpose: 'material' | 'recording' | 'assignment' | 'banner' | 'document' | 'thumbnail',
   onProgress?: (pct: number) => void,
 ): Promise<string> {
   const { upload } = await api('/api/uploads/presign', {

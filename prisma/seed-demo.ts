@@ -120,20 +120,108 @@ async function main() {
       description: 'HTML, CSS, JavaScript, React and Node — job-ready in 6 months.',
       category: 'Development', status: 'PUBLISHED', visibility: 'PUBLIC' },
   });
-  const m1 = await prisma.module.upsert({ where: { id: 'mod-frontend' }, update: {},
-    create: { id: 'mod-frontend', organizationId: org.id, title: 'Frontend Fundamentals' } });
-  const m2 = await prisma.module.upsert({ where: { id: 'mod-react' }, update: {},
-    create: { id: 'mod-react', organizationId: org.id, title: 'React Basics' } });
-  await prisma.courseModule.upsert({ where: { courseId_moduleId: { courseId: course1.id, moduleId: m1.id } }, update: {},
-    create: { courseId: course1.id, moduleId: m1.id, position: 0 } });
-  await prisma.courseModule.upsert({ where: { courseId_moduleId: { courseId: course1.id, moduleId: m2.id } }, update: {},
-    create: { courseId: course1.id, moduleId: m2.id, position: 1 } });
 
-  const s1 = await prisma.section.upsert({ where: { id: 'sec-html' }, update: {},
-    create: { id: 'sec-html', moduleId: m1.id, title: 'HTML & CSS', position: 0 } });
-  const s2 = await prisma.section.upsert({ where: { id: 'sec-react' }, update: {},
-    create: { id: 'sec-react', moduleId: m2.id, title: 'Getting started with React', position: 0 } });
+  // ── Full Stack: 8 modules, 40+ sections (realistic syllabus) ──
+  const mkMod = async (id: string, title: string) =>
+    prisma.module.upsert({ where: { id }, update: {}, create: { id, organizationId: org.id, title } });
+  const mkCM = async (courseId: string, moduleId: string, position: number) =>
+    prisma.courseModule.upsert({ where: { courseId_moduleId: { courseId, moduleId } }, update: {}, create: { courseId, moduleId, position } });
+  const mkSec = async (id: string, moduleId: string, title: string, position: number) =>
+    prisma.section.upsert({ where: { id }, update: {}, create: { id, moduleId, title, position } });
 
+  const modWeb = await mkMod('mod-web-basics', 'Web Basics & Internet');
+  const modHtml = await mkMod('mod-html', 'HTML Fundamentals');
+  const modForms = await mkMod('mod-forms', 'HTML Forms');
+  const modCss = await mkMod('mod-css', 'CSS Styling');
+  const modJs = await mkMod('mod-js', 'JavaScript Essentials');
+  const modReact = await mkMod('mod-react', 'React.js');
+  const modNode = await mkMod('mod-node', 'Node.js & Express');
+  const modCapstone = await mkMod('mod-capstone', 'Capstone Project');
+
+  await mkCM(course1.id, modWeb.id, 0);
+  await mkCM(course1.id, modHtml.id, 1);
+  await mkCM(course1.id, modForms.id, 2);
+  await mkCM(course1.id, modCss.id, 3);
+  await mkCM(course1.id, modJs.id, 4);
+  await mkCM(course1.id, modReact.id, 5);
+  await mkCM(course1.id, modNode.id, 6);
+  await mkCM(course1.id, modCapstone.id, 7);
+
+  // Module 1: Web Basics
+  await mkSec('sec-how-web-works', modWeb.id, 'How the Web works', 0);
+  await mkSec('sec-http-https', modWeb.id, 'HTTP & HTTPS', 1);
+  await mkSec('sec-browsers-devtools', modWeb.id, 'Browsers & DevTools', 2);
+  await mkSec('sec-domain-hosting', modWeb.id, 'Domains & Hosting', 3);
+
+  // Module 2: HTML Fundamentals
+  const s1 = await mkSec('sec-html-structure', modHtml.id, 'HTML document structure', 0);
+  await mkSec('sec-tags-elements', modHtml.id, 'Tags and elements', 1);
+  await mkSec('sec-attributes', modHtml.id, 'Attributes', 2);
+  await mkSec('sec-nesting', modHtml.id, 'Nesting', 3);
+  await mkSec('sec-comments', modHtml.id, 'Comments', 4);
+  await mkSec('sec-head-section', modHtml.id, 'Head section & Meta tags', 5);
+  await mkSec('sec-body', modHtml.id, 'Body', 6);
+  await mkSec('sec-headings', modHtml.id, 'Headings', 7);
+  await mkSec('sec-paragraphs', modHtml.id, 'Paragraphs', 8);
+  await mkSec('sec-text-formatting', modHtml.id, 'Text formatting', 9);
+  await mkSec('sec-links', modHtml.id, 'Links', 10);
+  await mkSec('sec-images', modHtml.id, 'Images', 11);
+  await mkSec('sec-lists', modHtml.id, 'Lists', 12);
+  await mkSec('sec-tables', modHtml.id, 'Tables', 13);
+
+  // Module 3: Forms
+  await mkSec('sec-form-structure', modForms.id, 'Form structure', 0);
+  await mkSec('sec-input-types', modForms.id, 'Input types', 1);
+  await mkSec('sec-labels', modForms.id, 'Labels', 2);
+  await mkSec('sec-textarea', modForms.id, 'Textarea', 3);
+  await mkSec('sec-select', modForms.id, 'Select dropdown', 4);
+  await mkSec('sec-checkbox', modForms.id, 'Checkbox', 5);
+  await mkSec('sec-radio', modForms.id, 'Radio buttons', 6);
+  await mkSec('sec-file-upload', modForms.id, 'File upload', 7);
+  await mkSec('sec-buttons', modForms.id, 'Buttons', 8);
+  await mkSec('sec-form-validation', modForms.id, 'Form validation', 9);
+
+  // Module 4: CSS
+  await mkSec('sec-css-syntax', modCss.id, 'CSS syntax & selectors', 0);
+  await mkSec('sec-box-model', modCss.id, 'Box model', 1);
+  await mkSec('sec-colors-fonts', modCss.id, 'Colors & fonts', 2);
+  await mkSec('sec-flexbox', modCss.id, 'Flexbox', 3);
+  await mkSec('sec-grid', modCss.id, 'CSS Grid', 4);
+  await mkSec('sec-responsive', modCss.id, 'Responsive design', 5);
+  await mkSec('sec-animations', modCss.id, 'Transitions & animations', 6);
+
+  // Module 5: JavaScript
+  await mkSec('sec-js-variables', modJs.id, 'Variables & data types', 0);
+  await mkSec('sec-js-operators', modJs.id, 'Operators', 1);
+  await mkSec('sec-js-conditionals', modJs.id, 'Conditionals', 2);
+  await mkSec('sec-js-loops', modJs.id, 'Loops', 3);
+  await mkSec('sec-js-functions', modJs.id, 'Functions', 4);
+  await mkSec('sec-js-arrays', modJs.id, 'Arrays & Objects', 5);
+  await mkSec('sec-dom', modJs.id, 'DOM manipulation', 6);
+  await mkSec('sec-events', modJs.id, 'Events', 7);
+  await mkSec('sec-fetch', modJs.id, 'Fetch API & Promises', 8);
+
+  // Module 6: React
+  const s2 = await mkSec('sec-react-intro', modReact.id, 'React introduction', 0);
+  await mkSec('sec-jsx', modReact.id, 'JSX syntax', 1);
+  await mkSec('sec-components', modReact.id, 'Components & props', 2);
+  await mkSec('sec-state', modReact.id, 'State management', 3);
+  await mkSec('sec-hooks', modReact.id, 'Hooks (useState, useEffect)', 4);
+  await mkSec('sec-routing', modReact.id, 'React Router', 5);
+
+  // Module 7: Node.js
+  await mkSec('sec-node-intro', modNode.id, 'Node.js setup', 0);
+  await mkSec('sec-express', modNode.id, 'Express framework', 1);
+  await mkSec('sec-rest-api', modNode.id, 'REST API design', 2);
+  await mkSec('sec-mongodb', modNode.id, 'MongoDB basics', 3);
+  await mkSec('sec-auth', modNode.id, 'Authentication & JWT', 4);
+
+  // Module 8: Capstone
+  await mkSec('sec-project-planning', modCapstone.id, 'Project planning', 0);
+  await mkSec('sec-fullstack-build', modCapstone.id, 'Full stack build', 1);
+  await mkSec('sec-deployment', modCapstone.id, 'Deployment', 2);
+
+  // ── Materials (attached to first two sections for quiz/assignment flows) ──
   const mat = async (id: string, sectionId: string, type: any, title: string, position: number, extra: any = {}) =>
     prisma.material.upsert({ where: { id }, update: {},
       create: { id, sectionId, type, title, position, status: 'published', ...extra } });
@@ -179,26 +267,68 @@ async function main() {
     ],
   } }); c2Materials.push('mat-py-quiz');
 
-  // ── Batches + sessions ──
+  // ── Extra students for realistic attendance roster ──
+  const student3 = await mk('student3@quastech.demo', 'Priya Mehta', 'STUDENT', 'Learn@123', thane.id, 'ACTIVE');
+  const student4 = await mk('student4@quastech.demo', 'Amit Deshmukh', 'STUDENT', 'Learn@123', thane.id, 'ACTIVE');
+  const student5 = await mk('student5@quastech.demo', 'Sneha Kulkarni', 'STUDENT', 'Learn@123', thane.id, 'ACTIVE');
+
+  // ── Batches (with batchTime + schedule) ──
   const batch1 = await prisma.batch.upsert({ where: { id: 'batch-fs-a' }, update: {},
     create: { id: 'batch-fs-a', courseId: course1.id, branchId: thane.id, instructorId: instructor.id,
-      name: 'Full Stack — Morning Batch A', startDate: new Date(Date.now() - 14 * 86400_000), capacity: 30 } });
+      name: 'Full Stack — Morning Batch A', startDate: new Date(Date.now() - 14 * 86400_000), capacity: 30,
+      batchTime: '10:00 AM - 12:00 PM', schedule: 'WEEKDAY' } });
   const batch2 = await prisma.batch.upsert({ where: { id: 'batch-py-a' }, update: {},
     create: { id: 'batch-py-a', courseId: course2.id, branchId: thane.id, instructorId: instructor.id,
-      name: 'Python — Weekend Batch', startDate: new Date(Date.now() - 30 * 86400_000), capacity: 25 } });
+      name: 'Python — Weekend Batch', startDate: new Date(Date.now() - 30 * 86400_000), capacity: 25,
+      batchTime: '2:00 PM - 4:00 PM', schedule: 'WEEKEND' } });
 
-  const pastSession = await prisma.classSession.upsert({ where: { id: 'sess-past' }, update: {},
-    create: { id: 'sess-past', batchId: batch1.id, title: 'HTML deep dive (held)',
-      scheduledAt: new Date(Date.now() - 3 * 86400_000), startedAt: new Date(Date.now() - 3 * 86400_000),
-      meetLink: 'https://meet.google.com/demo-past' } });
+  // ── Sessions (past sessions with topics covered, today session ready for demo) ──
+  const sess1 = await prisma.classSession.upsert({ where: { id: 'sess-day1' }, update: {},
+    create: { id: 'sess-day1', batchId: batch1.id, title: 'Day 1: Web Basics & HTML Intro',
+      scheduledAt: new Date(Date.now() - 10 * 86400_000), startedAt: new Date(Date.now() - 10 * 86400_000),
+      meetLink: 'https://meet.google.com/demo-day1' } });
+  const sess2 = await prisma.classSession.upsert({ where: { id: 'sess-day2' }, update: {},
+    create: { id: 'sess-day2', batchId: batch1.id, title: 'Day 2: HTML Tags & Structure',
+      scheduledAt: new Date(Date.now() - 8 * 86400_000), startedAt: new Date(Date.now() - 8 * 86400_000),
+      meetLink: 'https://meet.google.com/demo-day2' } });
+  const sess3 = await prisma.classSession.upsert({ where: { id: 'sess-day3' }, update: {},
+    create: { id: 'sess-day3', batchId: batch1.id, title: 'Day 3: Text, Links & Images',
+      scheduledAt: new Date(Date.now() - 5 * 86400_000), startedAt: new Date(Date.now() - 5 * 86400_000),
+      meetLink: 'https://meet.google.com/demo-day3' } });
   await prisma.classSession.upsert({ where: { id: 'sess-today' }, update: {},
-    create: { id: 'sess-today', batchId: batch1.id, title: 'CSS Flexbox live class',
+    create: { id: 'sess-today', batchId: batch1.id, title: 'Day 4: Lists & Tables',
       scheduledAt: new Date(Date.now() + 2 * 3600_000), meetLink: 'https://meet.google.com/demo-today' } });
   await prisma.classSession.upsert({ where: { id: 'sess-tmrw' }, update: {},
-    create: { id: 'sess-tmrw', batchId: batch1.id, title: 'JavaScript intro',
+    create: { id: 'sess-tmrw', batchId: batch1.id, title: 'Day 5: HTML Forms',
       scheduledAt: new Date(Date.now() + 26 * 3600_000), meetLink: 'https://meet.google.com/demo-tmrw' } });
 
-  // ── Enrollments + fees (receipted) ──
+  // ── Session topics covered (past sessions) ──
+  const topicUpsert = async (sessionId: string, sectionId: string) =>
+    prisma.sessionTopic.upsert({
+      where: { sessionId_sectionId: { sessionId, sectionId } }, update: {},
+      create: { sessionId, sectionId } });
+  // Day 1: covered Web Basics + HTML structure
+  await topicUpsert(sess1.id, 'sec-how-web-works');
+  await topicUpsert(sess1.id, 'sec-http-https');
+  await topicUpsert(sess1.id, 'sec-browsers-devtools');
+  await topicUpsert(sess1.id, 'sec-domain-hosting');
+  await topicUpsert(sess1.id, 'sec-html-structure');
+  // Day 2: Tags, elements, attributes, nesting, comments
+  await topicUpsert(sess2.id, 'sec-tags-elements');
+  await topicUpsert(sess2.id, 'sec-attributes');
+  await topicUpsert(sess2.id, 'sec-nesting');
+  await topicUpsert(sess2.id, 'sec-comments');
+  await topicUpsert(sess2.id, 'sec-head-section');
+  await topicUpsert(sess2.id, 'sec-body');
+  // Day 3: Headings, paragraphs, text formatting, links, images
+  await topicUpsert(sess3.id, 'sec-headings');
+  await topicUpsert(sess3.id, 'sec-paragraphs');
+  await topicUpsert(sess3.id, 'sec-text-formatting');
+  await topicUpsert(sess3.id, 'sec-links');
+  await topicUpsert(sess3.id, 'sec-images');
+  // Day 4 (today) and Day 5 (tomorrow) have NO topics yet → instructor will demo checking them
+
+  // ── Enrollments + fees ──
   const enroll = async (id: string, learnerId: string, courseId: string, batchId: string,
     totalFee: number, discount: number, paid: number, assignedById: string) => {
     const e = await prisma.enrollment.upsert({ where: { id }, update: {},
@@ -219,15 +349,30 @@ async function main() {
     return e;
   };
   const admin = (await prisma.user.findFirst({ where: { email: 'admin@quastech.demo' } }))!;
-  const e1 = await enroll('enr-s1-fs', student1.id, course1.id, batch1.id, 25000, 2000, 10000, admin.id); // ₹13,000 pending
-  const e2 = await enroll('enr-s2-fs', student2.id, course1.id, batch1.id, 25000, 0, 25000, admin.id);    // fully paid
-  const e3 = await enroll('enr-s2-py', student2.id, course2.id, batch2.id, 12000, 1000, 11000, admin.id); // fully paid
+  const e1 = await enroll('enr-s1-fs', student1.id, course1.id, batch1.id, 25000, 2000, 10000, admin.id);
+  const e2 = await enroll('enr-s2-fs', student2.id, course1.id, batch1.id, 25000, 0, 25000, admin.id);
+  await enroll('enr-s3-fs', student3.id, course1.id, batch1.id, 25000, 3000, 22000, admin.id);
+  await enroll('enr-s4-fs', student4.id, course1.id, batch1.id, 25000, 0, 12000, admin.id);
+  await enroll('enr-s5-fs', student5.id, course1.id, batch1.id, 25000, 5000, 20000, admin.id);
+  const e3 = await enroll('enr-s2-py', student2.id, course2.id, batch2.id, 12000, 1000, 11000, admin.id);
 
-  // ── Attendance on the past session ──
-  for (const [learnerId, present] of [[student1.id, true], [student2.id, true]] as const)
-    await prisma.attendance.upsert({
-      where: { sessionId_learnerId: { sessionId: pastSession.id, learnerId } }, update: {},
-      create: { sessionId: pastSession.id, learnerId, present, markedById: instructor.id } });
+  // ── Attendance on past sessions (realistic mix) ──
+  const markAtt = async (sessionId: string, learnerId: string, present: boolean) =>
+    prisma.attendance.upsert({
+      where: { sessionId_learnerId: { sessionId, learnerId } }, update: {},
+      create: { sessionId, learnerId, present, markedById: instructor.id } });
+  // Day 1: all present
+  for (const sid of [student1.id, student2.id, student3.id, student4.id, student5.id])
+    await markAtt(sess1.id, sid, true);
+  // Day 2: student4 absent
+  for (const sid of [student1.id, student2.id, student3.id, student5.id])
+    await markAtt(sess2.id, sid, true);
+  await markAtt(sess2.id, student4.id, false);
+  // Day 3: student1 and student5 absent
+  for (const sid of [student2.id, student3.id, student4.id])
+    await markAtt(sess3.id, sid, true);
+  await markAtt(sess3.id, student1.id, false);
+  await markAtt(sess3.id, student5.id, false);
 
   // ── Progress: student2 completed Python course (100%) → certificate ──
   for (const matId of c2Materials)
@@ -300,16 +445,16 @@ async function main() {
 
   ADMIN SIDE                                   STUDENT SIDE
   superadmin@quastech.demo  / Admin@123        student1@quastech.demo / Learn@123
-  admin@quastech.demo       / Admin@123          → Full Stack course, ₹13,000 pending fee,
-  branchadmin@quastech.demo / Admin@123            assignment awaiting evaluation
-  instructor@quastech.demo  / Teach@123        student2@quastech.demo / Learn@123
-                                                 → 2 courses, Python COMPLETED,
-                                                   certificate + published result
+  admin@quastech.demo       / Admin@123          → Full Stack course, ₹13,000 pending fee
+  branchadmin@quastech.demo / Admin@123        student2@quastech.demo / Learn@123
+  instructor@quastech.demo  / Teach@123          → 2 courses, Python COMPLETED + cert
+                                               student3/4/5@quastech.demo / Learn@123
 
-  What to demo: Admin dashboard KPIs · pending-fee report · enroll wizard ·
-  course builder · Instructor: today's session "Start", attendance, evaluation
-  queue (Aisha's assignment is waiting) · Student: player (PDF opens, quiz is
-  attemptable live), certificate download, notifications.
+  SYLLABUS TRACKING DEMO:
+  Login as instructor → Batches → "Full Stack — Morning Batch A"
+  → 8 modules, 48 topics. 16 already covered (Web Basics + HTML partially).
+  → Open "Day 4: Lists & Tables" (today) → tick topics → save → progress updates.
+  → Switch to Attendance tab → mark students present/absent → save.
 `);
 }
 

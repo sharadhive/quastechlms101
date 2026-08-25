@@ -58,7 +58,7 @@ enum PayMode {
   UPI
   CHEQUE
   BANK
-  ONLINE // Razorpay post-completion — same table, no rework
+  ONLINE // Easebuzz/Razorpay post-completion — same table, no rework
 }
 
 enum SubStatus {
@@ -175,12 +175,15 @@ model Course {
   categoryId     String?
   status         CourseStatus @default(DRAFT)
   visibility     Visibility   @default(PRIVATE)
+  price          Decimal      @default(0) @db.Decimal(10, 2)
+  isFree         Boolean      @default(false)
   createdAt      DateTime     @default(now())
 
   organization  Organization   @relation(fields: [organizationId], references: [id])
   courseModules CourseModule[]
   batches       Batch[]
   enrollments   Enrollment[]
+  orders        OnlineOrder[]
 
   @@index([organizationId, status])
 }
@@ -208,12 +211,13 @@ model CourseModule {
 }
 
 model Section {
-  id        String     @id @default(uuid())
-  moduleId  String
-  title     String
-  position  Int
-  module    Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  materials Material[]
+  id            String         @id @default(uuid())
+  moduleId      String
+  title         String
+  position      Int
+  module        Module         @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  materials     Material[]
+  sessionTopics SessionTopic[]
 }
 
 model Material {
@@ -244,6 +248,8 @@ model Batch {
   startDate    DateTime
   endDate      DateTime?
   capacity     Int?
+  batchTime    String?   // e.g. "10:00 AM - 12:00 PM"
+  schedule     String?   // WEEKDAY | WEEKEND | CUSTOM
   createdAt    DateTime  @default(now())
 
   course      Course         @relation(fields: [courseId], references: [id])
@@ -258,16 +264,30 @@ model Batch {
 }
 
 model ClassSession {
-  id          String       @id @default(uuid())
-  batchId     String
-  title       String
-  scheduledAt DateTime
-  startedAt   DateTime?
-  meetLink    String?
-  batch       Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  attendance  Attendance[]
+  id            String         @id @default(uuid())
+  batchId       String
+  title         String
+  scheduledAt   DateTime
+  startedAt     DateTime?
+  meetLink      String?
+  batch         Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  attendance    Attendance[]
+  topicsCovered SessionTopic[]
 
   @@index([batchId, scheduledAt])
+}
+
+// ─── Session topic coverage (instructor marks which sections were taught) ────
+model SessionTopic {
+  sessionId String
+  sectionId String
+  coveredAt DateTime @default(now())
+
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  section Section      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, sectionId])
+  @@index([sectionId])
 }
 
 model Attendance {
@@ -288,7 +308,7 @@ model Enrollment {
   id           String       @id @default(uuid())
   learnerId    String
   courseId     String
-  batchId      String
+  batchId      String?
   assignedById String
   enrolledAt   DateTime     @default(now())
   status       EnrollStatus @default(ACTIVE)
@@ -297,10 +317,10 @@ model Enrollment {
 
   learner    User        @relation("LearnerEnrollments", fields: [learnerId], references: [id])
   course     Course      @relation(fields: [courseId], references: [id])
-  batch      Batch       @relation(fields: [batchId], references: [id])
+  batch      Batch?      @relation(fields: [batchId], references: [id])
   feeAccount FeeAccount?
 
-  @@unique([learnerId, batchId]) // DB-enforced: no duplicate enrollment
+  @@unique([learnerId, courseId]) // DB-enforced: no duplicate enrollment per course
   @@index([batchId, status])
   @@index([courseId])
 }
@@ -536,6 +556,25 @@ model Banner {
   @@index([organizationId, isActive, position])
 }
 
+// ─── Registration lookups (populated from LMS DB + student additions) ─
+model Location {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model College {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
 // ─── Merged features (from QUASTECHLMS PRE — rebuilt on Prisma) ─────
 model Category {
   id             String   @id @default(uuid())
@@ -677,4 +716,28 @@ model IntegrationHistory {
   integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, provider, changedAt])
+}
+
+// ─── Online course orders (marketplace purchases) ───────────────
+model OnlineOrder {
+  id              String   @id @default(uuid())
+  organizationId  String
+  learnerId       String
+  courseId         String
+  amount          Decimal  @db.Decimal(10, 2)
+  currency        String   @default("INR")
+  gateway         String   @default("EASEBUZZ") // EASEBUZZ | RAZORPAY
+  gatewayTxnId    String?  // our generated txnid sent to gateway
+  gatewayOrderId  String?  // gateway's response order/reference id
+  status          String   @default("PENDING") // PENDING | PAID | FAILED | REFUNDED
+  gatewayResponse Json?    // full response blob for audit
+  enrollmentId    String?  // linked after successful payment
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@index([organizationId, learnerId])
+  @@index([gatewayTxnId])
+  @@index([status])
 }

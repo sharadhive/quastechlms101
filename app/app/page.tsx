@@ -146,10 +146,21 @@ export default function StudentHome() {
         <div className="grid grid-4">
           {d.continueLearning.map((e: any) => (
             <Link key={e.id} href={`/app/courses/${e.id}`}>
-              <div className="card" style={{ marginBottom: 0 }}>
-                <b>{e.course.title}</b>
-                <div className="progressbar" style={{ margin: '8px 0 6px' }}><div style={{ width: `${e.progressPct}%` }} /></div>
-                <span className="muted">{Math.round(Number(e.progressPct))}% complete</span>
+              <div className="card" style={{ marginBottom: 0, padding: 0, overflow: 'hidden' }}>
+                <div style={{
+                  height: 90, background: 'linear-gradient(135deg, #1E293B, #312E81)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'rgba(255,255,255,.4)', fontSize: '1.5rem', overflow: 'hidden',
+                }}>
+                  {e.course.thumbnailUrl
+                    ? <img src={e.course.thumbnailUrl} alt={e.course.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : '📚'}
+                </div>
+                <div style={{ padding: '12px 14px' }}>
+                  <b>{e.course.title}</b>
+                  <div className="progressbar" style={{ margin: '8px 0 6px' }}><div style={{ width: `${e.progressPct}%` }} /></div>
+                  <span className="muted">{Math.round(Number(e.progressPct))}% complete</span>
+                </div>
               </div>
             </Link>
           ))}

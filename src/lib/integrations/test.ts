@@ -42,6 +42,24 @@ export async function testIntegration(
         if (!r.ok) return { ok: false, message: `Razorpay returned ${r.status}.` };
         return { ok: true, message: `Razorpay keys valid (${cfg.mode ?? 'test'} mode).` };
       }
+      case 'EASEBUZZ': {
+        // Validate by calling the Easebuzz initiate API with a minimal test payload
+        const base = cfg.mode === 'live' ? 'https://pay.easebuzz.in' : 'https://testpay.easebuzz.in';
+        const crypto = await import('crypto');
+        const txnid = `TEST_${Date.now()}`;
+        const amount = '1.00';
+        const hashStr = `${cfg.merchantKey}|${txnid}|${amount}|test|test@test.com|test|||||||||||${cfg.salt}`;
+        const hash = crypto.createHash('sha512').update(hashStr).digest('hex');
+        const body = new URLSearchParams({
+          key: cfg.merchantKey, txnid, amount, productinfo: 'test',
+          firstname: 'test', email: 'test@test.com', phone: '9999999999',
+          surl: 'https://localhost/success', furl: 'https://localhost/failure', hash,
+        });
+        const r = await fetch(`${base}/payment/initiateLink`, { method: 'POST', body });
+        const j: any = await r.json();
+        if (j.status === 1) return { ok: true, message: `Easebuzz connected (${cfg.mode ?? 'test'} mode). Key is valid.` };
+        return { ok: false, message: j.error_desc ?? j.data ?? 'Easebuzz rejected the credentials.' };
+      }
       case 'ZOOM': {
         const basic = Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64');
         const r = await fetch(`https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${cfg.accountId}`, {

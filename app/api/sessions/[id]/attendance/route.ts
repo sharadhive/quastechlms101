@@ -25,9 +25,13 @@ async function loadScopedSession(req: NextRequest, id: string) {
   return { session, cls };
 }
 
-/** GET → roster (enrolled learners + current marks) */
+/** GET → roster (enrolled learners + current marks) + session context */
 export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: string } }) => {
   const { cls } = await loadScopedSession(req, ctx.params.id);
+  const full = await prisma.classSession.findUnique({
+    where: { id: cls.id },
+    select: { scheduledAt: true, topicsCovered: { select: { sectionId: true } } },
+  });
   const [enrollments, marks] = await Promise.all([
     prisma.enrollment.findMany({
       where: { batchId: cls.batch.id, status: 'ACTIVE' },
@@ -40,7 +44,12 @@ export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: str
     ...e.learner,
     present: markMap.get(e.learner.id) ?? null,
   }));
-  return NextResponse.json({ sessionId: cls.id, roster });
+  return NextResponse.json({
+    sessionId: cls.id,
+    scheduledAt: full?.scheduledAt,
+    topicsCovered: full?.topicsCovered.map((t) => t.sectionId) ?? [],
+    roster,
+  });
 });
 
 const postSchema = z.object({

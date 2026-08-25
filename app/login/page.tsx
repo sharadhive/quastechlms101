@@ -31,7 +31,10 @@ export default function Login() {
   return (
     <div className="center-page">
       <div className="auth-card">
-        <h1 style={{ textAlign: 'center' }}>QUASTECH OS</h1>
+        <h1 style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <img src="/logo.png" alt="QUASTECH" style={{ height: 40 }} />
+          LMS
+        </h1>
         <p className="muted" style={{ textAlign: 'center' }}>Sign in to continue</p>
         <label>Email</label>
         <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" />

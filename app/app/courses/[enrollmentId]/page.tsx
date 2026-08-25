@@ -22,9 +22,24 @@ export default function Player() {
   const [speed, setSpeed] = useState(1);
   const [stalls, setStalls] = useState(0);
   const [autoNote, setAutoNote] = useState('');
+  const [pdfExpanded, setPdfExpanded] = useState(false);
 
   const load = () => api(`/api/me/courses/${enrollmentId}`).then(setData);
   useEffect(() => { load(); }, [enrollmentId]);
+
+  // Block Ctrl+P/S/C when notes tab is active OR viewing a PDF (prevent download/print/copy)
+  useEffect(() => {
+    const isPdf = tab === 'content' && active?.type === 'PDF';
+    if (tab !== 'notes' && !isPdf) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && ['p', 's', 'c'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [tab, active]);
+
   const doneSet = new Set((data?.completed ?? []).map((c: any) => c.materialId));
 
   const loadSide = (m: any) => {
@@ -178,15 +193,20 @@ export default function Player() {
             <button className="btn btn-sm" style={{ flex: '0 0 auto' }} disabled={!nText} onClick={addNote}>Save note</button>
           </div>
           {notes.length === 0 && <p className="muted">No notes for this lesson yet.</p>}
-          {notes.map((n) => (
-            <p key={n.id} style={{ borderBottom: '1px solid var(--border)', padding: '8px 0' }}>
-              {n.timestampSec > 0 && <span className="badge blue" style={{ marginRight: 8, cursor: 'pointer' }}
-                onClick={() => { if (videoRef) videoRef.currentTime = n.timestampSec; }}>▶ {fmt(n.timestampSec)}</span>}
-              {n.content}
-              <a href="#" className="muted" style={{ float: 'right' }}
-                onClick={async (e) => { e.preventDefault(); await api(`/api/notes/${n.id}`, { method: 'DELETE' }); loadSide(active); }}>delete</a>
-            </p>
-          ))}
+          <div onContextMenu={(e) => e.preventDefault()}>
+            {notes.map((n) => (
+              <div key={n.id} style={{
+                borderBottom: '1px solid var(--border)', padding: '8px 0',
+                userSelect: 'none', WebkitUserSelect: 'none',
+              }}>
+                {n.timestampSec > 0 && <span className="badge blue" style={{ marginRight: 8, cursor: 'pointer' }}
+                  onClick={() => { if (videoRef) videoRef.currentTime = n.timestampSec; }}>▶ {fmt(n.timestampSec)}</span>}
+                <span style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>{n.content}</span>
+                <a href="#" className="muted" style={{ float: 'right' }}
+                  onClick={async (e) => { e.preventDefault(); await api(`/api/notes/${n.id}`, { method: 'DELETE' }); loadSide(active); }}>delete</a>
+              </div>
+            ))}
+          </div>
         </>)}
         {tab !== 'content' ? null : <></>}
         {tab === 'content' && active?.type === 'VIDEO' && streamUrl && (<>
@@ -226,8 +246,43 @@ export default function Player() {
           {autoNote && <div className="ok">{autoNote}</div>}
         </>)}
         {tab === 'content' && active?.type === 'PDF' && streamUrl && (<>
-          <iframe src={streamUrl} style={{ width: '100%', height: '65vh', border: 0, borderRadius: 10 }} />
-          <button className="btn btn-sm" onClick={markDone}>Mark as read</button>
+          {/* Secured PDF viewer — no download/print/save */}
+          {pdfExpanded && (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,.85)',
+              display: 'flex', flexDirection: 'column', padding: 16,
+            }}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ color: '#fff', fontWeight: 700, fontSize: '.95rem' }}>📄 {active.title}</span>
+                <button className="btn btn-sm" onClick={() => setPdfExpanded(false)}
+                  style={{ background: 'rgba(255,255,255,.15)', border: 'none' }}>✕ Close</button>
+              </div>
+              <iframe
+                src={`${streamUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
+                style={{ flex: 1, width: '100%', border: 0, borderRadius: 10, background: '#2a2a2a' }}
+              />
+            </div>
+          )}
+          <div
+            style={{ position: 'relative' }}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <iframe
+              src={`${streamUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
+              style={{ width: '100%', height: '65vh', border: 0, borderRadius: 10, background: '#f5f5f5' }}
+            />
+            {/* Invisible overlay on top-right corner to block any residual toolbar clicks */}
+            <div style={{
+              position: 'absolute', top: 0, right: 0, width: 200, height: 44,
+              background: 'transparent', zIndex: 2, cursor: 'default',
+            }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+            <button className="btn btn-sm btn-ghost" onClick={() => setPdfExpanded(true)}>⊞ Expand fullscreen</button>
+            <button className="btn btn-sm" onClick={markDone}>Mark as read</button>
+          </div>
         </>)}
         {tab === 'content' && active?.type === 'LINK' && (<>
           <a className="btn" href={active.externalUrl} target="_blank">Open link ↗</a>
