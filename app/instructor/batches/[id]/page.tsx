@@ -7,90 +7,112 @@ export default function InstructorBatch() {
   const { id } = useParams<{ id: string }>();
   const [b, setB] = useState<any>(null);
   const [expandedMods, setExpandedMods] = useState<Set<number>>(new Set());
-  const [activeSession, setActiveSession] = useState('');
+  const [expandedTopic, setExpandedTopic] = useState<string | null>(null);
   const [roster, setRoster] = useState<any[]>([]);
-  const [topicEdits, setTopicEdits] = useState<Set<string>>(new Set());
-  const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
-  const [f, setF] = useState({ title: '', scheduledAt: '', meetLink: '' });
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
-  const [savingTopics, setSavingTopics] = useState(false);
-  const [tab, setTab] = useState<'topics' | 'attendance'>('topics');
+  const [togglingTopic, setTogglingTopic] = useState<string | null>(null);
+  const [showSessionForm, setShowSessionForm] = useState(false);
+  const [sessionForm, setSessionForm] = useState({
+    moduleId: '', sectionId: '', title: '', scheduledAt: '', meetLink: '',
+  });
 
+  // ── Load batch data ──
   const load = useCallback(() => api(`/api/batches/${id}`).then((d) => {
     setB(d.batch);
     setExpandedMods(new Set(d.batch.curriculum.map((_: any, i: number) => i)));
   }), [id]);
   useEffect(() => { load(); }, [load]);
 
-  const openSession = async (sessionId: string) => {
-    setActiveSession(sessionId); setMsg(''); setErr(''); setTab('topics');
-    const d = await api(`/api/sessions/${sessionId}/attendance`);
-    setRoster(d.roster.map((r: any) => ({ ...r, present: r.present ?? true })));
-    const s = b?.sessions?.find((s: any) => s.id === sessionId);
-    setTopicEdits(new Set(s?.topicsCovered || d.topicsCovered || []));
+  // ── Toggle topic complete/incomplete ──
+  const toggleTopicComplete = async (sectionId: string, currentlyCompleted: boolean) => {
+    setTogglingTopic(sectionId); setErr(''); setMsg('');
+    try {
+      await api(`/api/batches/${id}/topics`, {
+        method: 'PUT',
+        json: { sectionId, completed: !currentlyCompleted },
+      });
+      setMsg(!currentlyCompleted ? 'Topic marked as complete ✓' : 'Topic unmarked');
+      await load();
+    } catch (e: any) { setErr(e.message); }
+    setTogglingTopic(null);
   };
 
-  const saveAttendance = async () => {
-    setErr(''); setSaving(true);
+  // ── Open attendance drawer for a topic ──
+  const openAttendance = async (sectionId: string) => {
+    if (expandedTopic === sectionId) {
+      setExpandedTopic(null);
+      setRoster([]);
+      return;
+    }
+    setExpandedTopic(sectionId);
+    setRosterLoading(true); setErr(''); setMsg('');
     try {
-      await api(`/api/sessions/${activeSession}/attendance`, {
+      const d = await api(`/api/batches/${id}/topic-attendance?sectionId=${sectionId}`);
+      setRoster(d.roster.map((r: any) => ({
+        ...r,
+        present: r.present ?? true, // default new marks to present
+      })));
+    } catch (e: any) { setErr(e.message); }
+    setRosterLoading(false);
+  };
+
+  // ── Save attendance for expanded topic ──
+  const saveAttendance = async () => {
+    if (!expandedTopic) return;
+    setSaving(true); setErr(''); setMsg('');
+    try {
+      await api(`/api/batches/${id}/topic-attendance`, {
         method: 'POST',
-        json: { marks: roster.map((r) => ({ learnerId: r.id, present: r.present })) },
+        json: {
+          sectionId: expandedTopic,
+          marks: roster.map((r) => ({ learnerId: r.id, present: r.present })),
+        },
       });
       setMsg('Attendance saved ✓');
+      await load();
     } catch (e: any) { setErr(e.message); }
     setSaving(false);
   };
 
-  const saveTopics = async () => {
-    setSavingTopics(true); setErr('');
-    try {
-      await api(`/api/sessions/${activeSession}/topics`, {
-        method: 'PUT',
-        json: { sectionIds: Array.from(topicEdits) },
-      });
-      setMsg('Topics updated ✓');
-      load();
-    } catch (e: any) { setErr(e.message); }
-    setSavingTopics(false);
-  };
-
+  // ── Create session with optional module/topic ──
   const createSession = async () => {
     setErr('');
     try {
       await api(`/api/batches/${id}/sessions`, {
         method: 'POST',
-        json: { title: f.title, scheduledAt: new Date(f.scheduledAt).toISOString(), meetLink: f.meetLink || undefined },
+        json: {
+          title: sessionForm.title || undefined,
+          scheduledAt: new Date(sessionForm.scheduledAt).toISOString(),
+          meetLink: sessionForm.meetLink || undefined,
+          moduleId: sessionForm.moduleId || undefined,
+          sectionId: sessionForm.sectionId || undefined,
+        },
       });
-      setF({ title: '', scheduledAt: '', meetLink: '' });
-      load();
+      setSessionForm({ moduleId: '', sectionId: '', title: '', scheduledAt: '', meetLink: '' });
+      setMsg('Session created ✓');
+      await load();
     } catch (e: any) { setErr(e.message); }
   };
 
+  // ── Helpers ──
   const toggleMod = (i: number) => {
     const next = new Set(expandedMods);
     next.has(i) ? next.delete(i) : next.add(i);
     setExpandedMods(next);
   };
-
-  const toggleTopic = (sectionId: string) => {
-    const next = new Set(topicEdits);
-    next.has(sectionId) ? next.delete(sectionId) : next.add(sectionId);
-    setTopicEdits(next);
-  };
-
   const markAllPresent = () => setRoster(roster.map((r) => ({ ...r, present: true })));
   const markAllAbsent = () => setRoster(roster.map((r) => ({ ...r, present: false })));
+
+  const selectedModuleSections = sessionForm.moduleId
+    ? b?.curriculum?.find((m: any) => m.moduleId === sessionForm.moduleId)?.sections || []
+    : [];
 
   if (!b) return <p className="muted" style={{ padding: 40, textAlign: 'center' }}>Loading batch…</p>;
 
   const presentCount = roster.filter((r) => r.present).length;
-  const activeSessionData = b.sessions.find((s: any) => s.id === activeSession);
-  const todaySessions = b.sessions.filter((s: any) => {
-    const d = new Date(s.scheduledAt);
-    const today = new Date();
-    return d.toDateString() === today.toDateString();
-  });
 
   return (<>
     {/* ── Batch Header ── */}
@@ -101,246 +123,266 @@ export default function InstructorBatch() {
         {b.batchTime && <span style={{ background: 'rgba(255,255,255,.12)', padding: '4px 12px', borderRadius: 99, fontSize: '.78rem', fontWeight: 600 }}>🕐 {b.batchTime}</span>}
         {b.schedule && <span style={{ background: 'rgba(255,255,255,.12)', padding: '4px 12px', borderRadius: 99, fontSize: '.78rem', fontWeight: 600 }}>📅 {b.schedule}</span>}
         <span style={{ background: 'rgba(255,255,255,.12)', padding: '4px 12px', borderRadius: 99, fontSize: '.78rem', fontWeight: 600 }}>👨‍🎓 {b.enrollments.length} Students</span>
-        <span style={{ background: 'rgba(255,255,255,.12)', padding: '4px 12px', borderRadius: 99, fontSize: '.78rem', fontWeight: 600 }}>📚 {b.sessions.length} Sessions</span>
+        <span style={{ background: 'rgba(255,255,255,.12)', padding: '4px 12px', borderRadius: 99, fontSize: '.78rem', fontWeight: 600 }}>📚 {b.coveredSections}/{b.totalSections} Topics Done</span>
       </div>
     </div>
 
-    {/* ── Syllabus Progress ── */}
+    {/* ── Syllabus Progress Bar ── */}
     <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>📚 Syllabus Coverage</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <h2 style={{ margin: 0 }}>📚 Syllabus Progress</h2>
         <span style={{ fontSize: '.82rem', fontWeight: 700, color: b.syllabusProgress === 100 ? 'var(--green)' : 'var(--brand)' }}>
-          {b.coveredSections}/{b.totalSections} topics · {b.syllabusProgress}%
+          {b.syllabusProgress}% Complete
         </span>
       </div>
-      <div className="progressbar" style={{ height: 10, marginBottom: 16 }}>
+      <div className="progressbar" style={{ height: 10 }}>
         <div style={{ width: `${b.syllabusProgress}%` }} />
       </div>
+    </div>
 
-      {/* Collapsible Curriculum Tree */}
+    {/* ── Status Messages ── */}
+    {err && <div className="card err" style={{ border: '1px solid var(--red)', background: 'var(--red-bg)' }}>{err}</div>}
+    {msg && <div className="card ok" style={{ border: '1px solid var(--green)', background: 'var(--green-bg)' }}>{msg}</div>}
+
+    {/* ── Modules & Topics (Main Section) ── */}
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+        <h2 style={{ margin: 0 }}>📋 Course Topics</h2>
+        <p className="muted" style={{ margin: '4px 0 0', fontSize: '.78rem' }}>
+          Check topics when completed · Click a topic row to mark attendance
+        </p>
+      </div>
+
       {b.curriculum.map((mod: any, mi: number) => {
         const coveredInMod = mod.sections.filter((s: any) => s.covered).length;
         const totalInMod = mod.sections.length;
+        const pct = totalInMod > 0 ? Math.round((coveredInMod / totalInMod) * 100) : 0;
         const isOpen = expandedMods.has(mi);
+
         return (
-          <div key={mi} className="curriculum-mod">
-            <div className="curriculum-mod-head" onClick={() => toggleMod(mi)}>
-              <span>📁 {mod.moduleTitle}</span>
-              <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span className={`badge ${coveredInMod === totalInMod ? 'green' : 'gray'}`}>
-                  {coveredInMod}/{totalInMod} done
+          <div key={mi}>
+            {/* Module Header */}
+            <div className="module-head" onClick={() => toggleMod(mi)}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="module-icon">📁</span>
+                <span>{mod.moduleTitle}</span>
+              </span>
+              <span className="module-stats">
+                <span className={`badge ${coveredInMod === totalInMod && totalInMod > 0 ? 'green' : 'gray'}`}>
+                  {coveredInMod}/{totalInMod}
                 </span>
-                <span style={{ fontSize: '.8rem', transition: 'transform .2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
+                <div className="module-progress">
+                  <div style={{ width: `${pct}%` }} />
+                </div>
+                <span className={`module-chevron ${isOpen ? 'open' : ''}`}>▼</span>
               </span>
             </div>
-            {isOpen && (
-              <div className="curriculum-mod-body">
-                {mod.sections.map((sec: any) => (
-                  <div key={sec.id} className="curriculum-sec">
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: '1rem' }}>{sec.covered ? '✅' : '⬜'}</span>
-                      <span style={{ opacity: sec.covered ? .65 : 1, textDecoration: sec.covered ? 'line-through' : 'none' }}>{sec.title}</span>
-                    </span>
-                    {sec.covered && <span className="badge green" style={{ fontSize: '.65rem' }}>Covered</span>}
+
+            {/* Topics List */}
+            {isOpen && mod.sections.map((sec: any) => {
+              const isExpanded = expandedTopic === sec.id;
+              const isToggling = togglingTopic === sec.id;
+
+              return (
+                <div key={sec.id}>
+                  {/* Topic Row */}
+                  <div className={`topic-row ${sec.covered ? 'completed' : ''} ${isExpanded ? 'expanded' : ''}`}>
+                    {/* Checkbox */}
+                    <div
+                      className={`topic-checkbox ${sec.covered ? 'checked' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); toggleTopicComplete(sec.id, sec.covered); }}
+                      style={isToggling ? { opacity: 0.5, pointerEvents: 'none' } : {}}
+                    >
+                      <span className="check-icon">✓</span>
+                    </div>
+
+                    {/* Topic Info — click to open attendance */}
+                    <div className="topic-info" onClick={() => openAttendance(sec.id)}>
+                      <div className={`topic-title ${sec.covered ? 'done' : ''}`}>
+                        {sec.title}
+                      </div>
+                      {sec.coveredAt && (
+                        <div className="topic-sub">
+                          Completed on {new Date(sec.coveredAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Badges */}
+                    <div className="topic-badges" onClick={() => openAttendance(sec.id)}>
+                      {sec.coveredAt && (
+                        <span className="topic-date-badge">
+                          📅 {new Date(sec.coveredAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </span>
+                      )}
+                      {sec.attendance ? (
+                        <span className="topic-att-badge has-data">
+                          ✋ {sec.attendance.present}/{sec.attendance.total}
+                        </span>
+                      ) : sec.covered ? (
+                        <span className="topic-att-badge no-data">No attendance</span>
+                      ) : null}
+                      <span className={`topic-expand-icon ${isExpanded ? 'open' : ''}`}>▼</span>
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
+
+                  {/* Attendance Drawer */}
+                  <div className={`att-drawer ${isExpanded ? 'open' : ''}`}>
+                    {isExpanded && (
+                      <div className="att-drawer-inner">
+                        <div className="att-drawer-head">
+                          <h3>✋ Attendance — {sec.title}</h3>
+                          <div className="att-drawer-actions">
+                            <button className="btn btn-sm btn-ghost" onClick={markAllPresent}>✅ All Present</button>
+                            <button className="btn btn-sm btn-ghost" onClick={markAllAbsent}>❌ All Absent</button>
+                            <span className="muted" style={{ fontSize: '.78rem' }}>
+                              {presentCount}/{roster.length}
+                            </span>
+                          </div>
+                        </div>
+
+                        {rosterLoading ? (
+                          <p className="muted" style={{ textAlign: 'center', padding: 20 }}>Loading students…</p>
+                        ) : roster.length === 0 ? (
+                          <div className="empty"><div className="big">👥</div>No students enrolled in this batch.</div>
+                        ) : (
+                          <div className="student-grid">
+                            {roster.map((r, idx) => (
+                              <div
+                                key={r.id}
+                                className={`student-toggle ${r.present ? 'present' : 'absent'}`}
+                                onClick={() => setRoster(roster.map((x) => x.id === r.id ? { ...x, present: !x.present } : x))}
+                              >
+                                <div className="radio"><div className="radio-dot" /></div>
+                                <span className="snum">{idx + 1}.</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div className="sname">{r.name}</div>
+                                  <div className="semail">{r.email}</div>
+                                </div>
+                                <span className="pa-label">{r.present ? 'P' : 'A'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <button className="btn" onClick={saveAttendance} disabled={saving || roster.length === 0}>
+                            {saving ? 'Saving…' : `💾 Save Attendance (${presentCount}/${roster.length})`}
+                          </button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => { setExpandedTopic(null); setRoster([]); }}>
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         );
       })}
     </div>
 
-    {/* ── Schedule New Session ── */}
+    {/* ── Quick Session Assignment (Optional) ── */}
     <div className="card">
-      <h2 style={{ marginTop: 0 }}>➕ Schedule New Session</h2>
-      <div className="row">
-        <div><label>Session Title</label><input placeholder="e.g. HTML Forms & Validation" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></div>
-        <div><label>Date & Time</label><input type="datetime-local" value={f.scheduledAt} onChange={(e) => setF({ ...f, scheduledAt: e.target.value })} /></div>
-        <div><label>Meet Link (optional)</label><input placeholder="Zoom/Meet URL" value={f.meetLink} onChange={(e) => setF({ ...f, meetLink: e.target.value })} /></div>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        onClick={() => setShowSessionForm(!showSessionForm)}
+      >
+        <h2 style={{ margin: 0 }}>➕ Assign Session (Optional)</h2>
+        <span style={{ fontSize: '.8rem', color: 'var(--muted)', transition: 'transform .2s', transform: showSessionForm ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
       </div>
-      <button className="btn" onClick={createSession} disabled={!f.title || !f.scheduledAt}>Create Session</button>
-    </div>
 
-    {/* ── Today's Sessions Quick Access ── */}
-    {todaySessions.length > 0 && (
-      <div className="card" style={{ borderLeft: '4px solid var(--green)', background: 'var(--green-bg)' }}>
-        <h2 style={{ marginTop: 0, color: 'var(--green)' }}>🟢 Today's Sessions</h2>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {todaySessions.map((s: any) => (
-            <button key={s.id} className={activeSession === s.id ? 'btn' : 'btn btn-ghost'}
-              onClick={() => openSession(s.id)} style={{ fontSize: '.82rem' }}>
-              {s.title} — {new Date(s.scheduledAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-            </button>
-          ))}
+      {showSessionForm && (
+        <div style={{ marginTop: 16 }}>
+          <p className="muted" style={{ margin: '0 0 14px', fontSize: '.78rem' }}>
+            Create a scheduled session and optionally link it to a module or specific topic.
+          </p>
+          <div className="row">
+            <div>
+              <label>Module (optional)</label>
+              <select
+                value={sessionForm.moduleId}
+                onChange={(e) => setSessionForm({ ...sessionForm, moduleId: e.target.value, sectionId: '' })}
+              >
+                <option value="">— Select Module —</option>
+                {b.curriculum.map((m: any) => (
+                  <option key={m.moduleId} value={m.moduleId}>{m.moduleTitle}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label>Topic (optional)</label>
+              <select
+                value={sessionForm.sectionId}
+                onChange={(e) => setSessionForm({ ...sessionForm, sectionId: e.target.value })}
+                disabled={!sessionForm.moduleId}
+              >
+                <option value="">— All topics in module —</option>
+                {selectedModuleSections.map((s: any) => (
+                  <option key={s.id} value={s.id}>{s.title}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="row">
+            <div>
+              <label>Session Title (auto-generated if empty)</label>
+              <input
+                placeholder="e.g. HTML Forms & Validation"
+                value={sessionForm.title}
+                onChange={(e) => setSessionForm({ ...sessionForm, title: e.target.value })}
+              />
+            </div>
+            <div>
+              <label>Date & Time</label>
+              <input
+                type="datetime-local"
+                value={sessionForm.scheduledAt}
+                onChange={(e) => setSessionForm({ ...sessionForm, scheduledAt: e.target.value })}
+              />
+            </div>
+            <div>
+              <label>Meet Link (optional)</label>
+              <input
+                placeholder="Zoom/Meet URL"
+                value={sessionForm.meetLink}
+                onChange={(e) => setSessionForm({ ...sessionForm, meetLink: e.target.value })}
+              />
+            </div>
+          </div>
+          <button className="btn" onClick={createSession} disabled={!sessionForm.scheduledAt}>
+            Create Session
+          </button>
         </div>
-      </div>
-    )}
-
-    {/* ── All Sessions List ── */}
-    <div className="card">
-      <h2 style={{ marginTop: 0 }}>📋 All Sessions</h2>
-      {b.sessions.length === 0 ? (
-        <div className="empty"><div className="big">📭</div>No sessions scheduled yet. Create one above.</div>
-      ) : (
-        <div className="tablewrap"><table>
-          <thead><tr><th>Session</th><th>Date</th><th>Time</th><th>Topics</th><th>Attendance</th><th>Status</th><th></th></tr></thead>
-          <tbody>{b.sessions.map((s: any) => {
-            const dt = new Date(s.scheduledAt);
-            const isActive = activeSession === s.id;
-            return (
-              <tr key={s.id} style={isActive ? { background: 'var(--brand-50)' } : {}}>
-                <td><b>{s.title}</b></td>
-                <td>{dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                <td>{dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</td>
-                <td><span className={`badge ${s.topicsCovered.length > 0 ? 'blue' : 'gray'}`}>{s.topicsCovered.length} topics</span></td>
-                <td><span className={`badge ${s.attendanceCount > 0 ? 'green' : 'gray'}`}>{s.attendanceCount} marked</span></td>
-                <td>{s.startedAt ? <span className="badge green">Held</span> : <span className="badge amber">Upcoming</span>}</td>
-                <td>
-                  <button className={isActive ? 'btn btn-sm' : 'btn btn-sm btn-ghost'}
-                    onClick={() => openSession(s.id)}>
-                    {isActive ? '● Active' : 'Open →'}
-                  </button>
-                </td>
-              </tr>
-            );
-          })}</tbody>
-        </table></div>
       )}
     </div>
 
-    {/* ── Session Detail Panel (Topics + Attendance) ── */}
-    {activeSession && activeSessionData && (
-      <div className="card" style={{ border: '2px solid var(--brand)', boxShadow: '0 4px 20px rgba(124,58,237,.12)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <h2 style={{ margin: 0 }}>📝 {activeSessionData.title}</h2>
-          <button className="btn-ghost btn btn-sm" onClick={() => setActiveSession('')}>✕ Close</button>
+    {/* ── Sessions Reference (Collapsible) ── */}
+    {b.sessions.length > 0 && (
+      <details className="card" style={{ cursor: 'default' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: '.92rem', padding: '4px 0' }}>
+          📋 All Sessions ({b.sessions.length}) — click to expand
+        </summary>
+        <div className="tablewrap" style={{ marginTop: 12 }}>
+          <table>
+            <thead><tr><th>Session</th><th>Date</th><th>Topics</th><th>Attendance</th><th>Status</th></tr></thead>
+            <tbody>{b.sessions.map((s: any) => {
+              const dt = new Date(s.scheduledAt);
+              return (
+                <tr key={s.id}>
+                  <td><b>{s.title}</b></td>
+                  <td>{dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                  <td><span className={`badge ${s.topicsCovered.length > 0 ? 'blue' : 'gray'}`}>{s.topicsCovered.length} topics</span></td>
+                  <td><span className={`badge ${s.attendanceCount > 0 ? 'green' : 'gray'}`}>{s.attendanceCount} marked</span></td>
+                  <td>{s.startedAt ? <span className="badge green">Held</span> : <span className="badge amber">Upcoming</span>}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
         </div>
-        <p className="muted" style={{ margin: '0 0 16px' }}>
-          📅 {new Date(activeSessionData.scheduledAt).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-          {' · '}
-          🕐 {new Date(activeSessionData.scheduledAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-        </p>
-
-        {/* Tab Switcher */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: '#f1f3f8', borderRadius: 10, padding: 3 }}>
-          <button onClick={() => setTab('topics')}
-            style={{
-              flex: 1, padding: '8px 16px', border: 'none', borderRadius: 8, cursor: 'pointer',
-              fontWeight: 600, fontSize: '.85rem', fontFamily: 'inherit', transition: 'all .15s',
-              background: tab === 'topics' ? '#fff' : 'transparent',
-              color: tab === 'topics' ? 'var(--brand)' : 'var(--muted)',
-              boxShadow: tab === 'topics' ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
-            }}>
-            📚 Topics Covered ({topicEdits.size})
-          </button>
-          <button onClick={() => setTab('attendance')}
-            style={{
-              flex: 1, padding: '8px 16px', border: 'none', borderRadius: 8, cursor: 'pointer',
-              fontWeight: 600, fontSize: '.85rem', fontFamily: 'inherit', transition: 'all .15s',
-              background: tab === 'attendance' ? '#fff' : 'transparent',
-              color: tab === 'attendance' ? 'var(--brand)' : 'var(--muted)',
-              boxShadow: tab === 'attendance' ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
-            }}>
-            ✋ Attendance ({presentCount}/{roster.length})
-          </button>
-        </div>
-
-        {/* Topics Tab */}
-        {tab === 'topics' && (
-          <div>
-            <p style={{ fontSize: '.82rem', color: 'var(--muted)', margin: '0 0 12px' }}>
-              Tick the topics you taught in this session. Click on a module to expand it.
-            </p>
-            {b.curriculum.map((mod: any, mi: number) => (
-              <div key={mi} style={{ marginBottom: 8 }}>
-                <div style={{
-                  fontWeight: 700, fontSize: '.86rem', padding: '8px 12px',
-                  background: '#fafbfe', borderRadius: '8px 8px 0 0', border: '1px solid var(--border)',
-                  borderBottom: 'none',
-                }}>
-                  📁 {mod.moduleTitle}
-                  <span className="muted" style={{ fontWeight: 400, marginLeft: 8 }}>
-                    ({mod.sections.filter((s: any) => topicEdits.has(s.id)).length}/{mod.sections.length} selected)
-                  </span>
-                </div>
-                <div style={{ border: '1px solid var(--border)', borderRadius: '0 0 8px 8px', padding: '4px 0' }}>
-                  {mod.sections.map((sec: any) => {
-                    const isChecked = topicEdits.has(sec.id);
-                    return (
-                      <label key={sec.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', cursor: 'pointer',
-                        fontSize: '.86rem', fontWeight: 400, transition: 'background .1s',
-                        background: isChecked ? 'rgba(124,58,237,.04)' : 'transparent',
-                        borderLeft: isChecked ? '3px solid var(--brand)' : '3px solid transparent',
-                      }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = isChecked ? 'rgba(124,58,237,.06)' : '#fafbfe')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = isChecked ? 'rgba(124,58,237,.04)' : 'transparent')}>
-                        <input type="checkbox" style={{ width: 'auto', margin: 0, accentColor: 'var(--brand)' }}
-                          checked={isChecked} onChange={() => toggleTopic(sec.id)} />
-                        <span>{sec.title}</span>
-                        {sec.covered && !isChecked && <span className="badge gray" style={{ marginLeft: 'auto', fontSize: '.6rem' }}>Already covered in another session</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            {err && <div className="err">{err}</div>}
-            {msg && <div className="ok">{msg}</div>}
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
-              <button className="btn" onClick={saveTopics} disabled={savingTopics}>
-                {savingTopics ? 'Saving…' : `💾 Save Topics (${topicEdits.size} selected)`}
-              </button>
-              <span className="muted" style={{ fontSize: '.78rem' }}>Date & time auto-recorded when you save</span>
-            </div>
-          </div>
-        )}
-
-        {/* Attendance Tab */}
-        {tab === 'attendance' && (
-          <div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
-              <button className="btn btn-sm btn-ghost" onClick={markAllPresent}>✅ Mark All Present</button>
-              <button className="btn btn-sm btn-ghost" onClick={markAllAbsent}>❌ Mark All Absent</button>
-              <span className="muted" style={{ marginLeft: 'auto', fontSize: '.82rem' }}>
-                {presentCount} present · {roster.length - presentCount} absent
-              </span>
-            </div>
-            {roster.length === 0 ? (
-              <div className="empty"><div className="big">👥</div>No students enrolled in this batch.</div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8 }}>
-                {roster.map((r, idx) => (
-                  <label key={r.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-                    borderRadius: 10, cursor: 'pointer', transition: 'all .12s',
-                    background: r.present ? 'var(--green-bg)' : 'var(--red-bg)',
-                    border: `1.5px solid ${r.present ? 'var(--green)' : 'var(--red)'}`,
-                    borderColor: r.present ? 'rgba(14,159,110,.25)' : 'rgba(224,36,36,.2)',
-                  }}>
-                    <input type="checkbox" style={{ width: 'auto', margin: 0, accentColor: 'var(--green)' }} checked={r.present}
-                      onChange={(e) => setRoster(roster.map((x) => x.id === r.id ? { ...x, present: e.target.checked } : x))} />
-                    <span style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', minWidth: 22 }}>{idx + 1}.</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: '.86rem' }}>{r.name}</div>
-                      <div style={{ fontSize: '.72rem', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.email}</div>
-                    </div>
-                    <span style={{ fontSize: '.82rem', fontWeight: 700, color: r.present ? 'var(--green)' : 'var(--red)' }}>
-                      {r.present ? 'P' : 'A'}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
-            {err && <div className="err" style={{ marginTop: 12 }}>{err}</div>}
-            {msg && <div className="ok" style={{ marginTop: 12 }}>{msg}</div>}
-            <button className="btn" onClick={saveAttendance} disabled={saving || roster.length === 0} style={{ marginTop: 14 }}>
-              {saving ? 'Saving…' : `💾 Save Attendance (${presentCount}/${roster.length} present)`}
-            </button>
-          </div>
-        )}
-      </div>
+      </details>
     )}
   </>);
 }

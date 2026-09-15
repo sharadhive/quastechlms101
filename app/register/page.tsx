@@ -67,13 +67,20 @@ export default function Register() {
   };
 
   return (
-    <div className="center-page">
-      <div className="register-card">
-        <h1 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <img src="/logo.png" alt="QUASTECH" style={{ height: 40 }} />
-          LMS
-        </h1>
-        <p className="sub">Create your free account to start learning</p>
+    <div className="auth-split">
+      <div className="auth-split-left">
+        <div className="auth-split-left-content">
+          <h2>Start Your Journey Today</h2>
+          <p>Create a free account to unlock courses, access premium materials, and take the first step toward advancing your career.</p>
+        </div>
+      </div>
+      <div className="auth-split-right">
+        <div className="auth-split-card" style={{ maxWidth: 500 }}>
+          <h1 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <img src="/logo.png" alt="QUASTECH" style={{ height: 40 }} />
+            LMS
+          </h1>
+          <p className="sub">Create your free account to start learning</p>
 
         <label>Full Name *</label>
         <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Your full name" autoFocus />
@@ -142,6 +149,7 @@ export default function Register() {
           Already have an account? <Link href="/login">Login</Link>
         </p>
       </div>
+    </div>
     </div>
   );
 }

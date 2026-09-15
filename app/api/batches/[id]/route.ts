@@ -37,7 +37,7 @@ export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: str
       sessions: {
         orderBy: { scheduledAt: 'asc' },
         include: {
-          topicsCovered: { select: { sectionId: true } },
+          topicsCovered: { select: { sectionId: true, coveredAt: true } },
           _count: { select: { attendance: true } },
         },
       },
@@ -53,24 +53,60 @@ export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: str
   });
   if (!batch) throw notFound('Batch not found');
 
-  // Compute which sections have been covered across all sessions
-  const allCoveredSectionIds = new Set<string>();
+  // Build maps: sectionId → { sessionId, coveredAt } and sessionId → attendanceCount
+  const sectionSessionMap = new Map<string, { sessionId: string; coveredAt: Date }>();
+  const sessionAttendanceMap = new Map<string, number>();
+
   for (const s of batch.sessions) {
+    sessionAttendanceMap.set(s.id, s._count.attendance);
     for (const t of s.topicsCovered) {
-      allCoveredSectionIds.add(t.sectionId);
+      if (!sectionSessionMap.has(t.sectionId)) {
+        sectionSessionMap.set(t.sectionId, {
+          sessionId: s.id,
+          coveredAt: t.coveredAt,
+        });
+      }
     }
   }
 
-  // Build curriculum with coverage status
+  // Get attendance details per session for attendance summary
+  const allAttendance = await prisma.attendance.findMany({
+    where: { sessionId: { in: batch.sessions.map((s) => s.id) } },
+    select: { sessionId: true, present: true },
+  });
+  const sessionAttendanceDetail = new Map<string, { present: number; total: number }>();
+  for (const a of allAttendance) {
+    const entry = sessionAttendanceDetail.get(a.sessionId) || { present: 0, total: 0 };
+    entry.total++;
+    if (a.present) entry.present++;
+    sessionAttendanceDetail.set(a.sessionId, entry);
+  }
+
+  // Compute which sections have been covered across all sessions
+  const allCoveredSectionIds = new Set<string>(sectionSessionMap.keys());
+
+  // Build curriculum with coverage status, coveredAt, sessionId, and attendance summary
   const curriculum = batch.course.courseModules.map((cm) => ({
     moduleTitle: cm.module.title,
+    moduleId: cm.module.id,
     position: cm.position,
-    sections: cm.module.sections.map((sec) => ({
-      id: sec.id,
-      title: sec.title,
-      position: sec.position,
-      covered: allCoveredSectionIds.has(sec.id),
-    })),
+    sections: cm.module.sections.map((sec) => {
+      const sessionInfo = sectionSessionMap.get(sec.id);
+      const attDetail = sessionInfo
+        ? sessionAttendanceDetail.get(sessionInfo.sessionId)
+        : null;
+      return {
+        id: sec.id,
+        title: sec.title,
+        position: sec.position,
+        covered: allCoveredSectionIds.has(sec.id),
+        coveredAt: sessionInfo?.coveredAt?.toISOString() ?? null,
+        sessionId: sessionInfo?.sessionId ?? null,
+        attendance: attDetail
+          ? { present: attDetail.present, total: attDetail.total }
+          : null,
+      };
+    }),
   }));
 
   const totalSections = curriculum.reduce((a, m) => a + m.sections.length, 0);

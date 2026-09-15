@@ -110,27 +110,24 @@ export default function ExploreCourses() {
             <Link key={c.id} href={`/app/explore/${c.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
               <div className="course-card">
                 <div className="thumb">
+                  {c.category && <span className="cat">{c.category}</span>}
                   {c.thumbnailUrl
                     ? <img src={c.thumbnailUrl} alt={c.title} />
                     : '📚'}
                   {isEnrolled && <span className="enrolled-badge">✓ Enrolled</span>}
                 </div>
                 <div className="body">
-                  {c.category && <span className="cat">{c.category}</span>}
                   <div className="title">{c.title}</div>
-                  {c.description && (
-                    <div className="muted" style={{ fontSize: '.78rem', marginBottom: 6, lineHeight: 1.4,
-                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {c.description}
-                    </div>
-                  )}
                   <div className="meta">
-                    <Stars rating={c.avgRating} />
-                    <span>{c.avgRating > 0 ? c.avgRating : '—'}</span>
-                    <span>·</span>
-                    <span>{c.totalLessons} lessons</span>
-                    <span>·</span>
-                    <span>{c.enrolledCount} enrolled</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Stars rating={c.avgRating} />
+                      <span style={{ fontWeight: 600, color: '#334155' }}>{c.avgRating > 0 ? c.avgRating.toFixed(1) : 'New'}</span>
+                    </div>
+                    <div className="meta-stat-row">
+                      <span>📖 {c.totalLessons} Lessons</span>
+                      <span>•</span>
+                      <span>👥 {c.enrolledCount} Enrolled</span>
+                    </div>
                   </div>
                   <div className="foot">
                     {c.isFree ? (
@@ -141,9 +138,9 @@ export default function ExploreCourses() {
                     {isEnrolled ? (
                       <span className="badge green">Continue →</span>
                     ) : c.isFree ? (
-                      <span className="btn btn-sm">Start Free</span>
+                      <span className="course-card-btn">Start Free</span>
                     ) : (
-                      <span className="btn btn-sm">Buy Now</span>
+                      <span className="course-card-btn">Buy Now</span>
                     )}
                   </div>
                 </div>

@@ -29,13 +29,20 @@ export default function Login() {
   };
 
   return (
-    <div className="center-page">
-      <div className="auth-card">
-        <h1 style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <img src="/logo.png" alt="QUASTECH" style={{ height: 40 }} />
-          LMS
-        </h1>
-        <p className="muted" style={{ textAlign: 'center' }}>Sign in to continue</p>
+    <div className="auth-split">
+      <div className="auth-split-left">
+        <div className="auth-split-left-content">
+          <h2>Empower Your Learning Journey</h2>
+          <p>Access your courses, track your progress, and achieve your goals with the world's most advanced learning platform.</p>
+        </div>
+      </div>
+      <div className="auth-split-right">
+        <div className="auth-split-card">
+          <h1 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <img src="/logo.png" alt="QUASTECH" style={{ height: 40 }} />
+            LMS
+          </h1>
+          <p className="sub">Welcome back! Sign in to continue.</p>
         <label>Email</label>
         <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" />
         {mode === 'password' && (<><label>Password</label>
@@ -52,6 +59,7 @@ export default function Login() {
           </a>
         </p>
       </div>
+    </div>
     </div>
   );
 }
