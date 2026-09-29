@@ -19,7 +19,7 @@ export const GET = withHandler(async (req: NextRequest) => {
   // If batchId is provided, scope leaderboard to students in that batch
   if (batchId) {
     const enrollments = await prisma.enrollment.findMany({
-      where: { batchId, status: 'ACTIVE' },
+      where: { batchId, status: { in: ['ACTIVE', 'COMPLETED'] } },
       select: { learnerId: true },
     });
     userIdScope = enrollments.map((e) => e.learnerId);

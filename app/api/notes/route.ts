@@ -30,6 +30,11 @@ export const POST = withHandler(async (req: NextRequest) => {
     where: { id: data.enrollmentId, learnerId: session.userId },
   });
   if (!enrollment) throw notFound('Enrollment not found');
+  // the note must be about a lesson of this course
+  const lesson = await prisma.material.count({
+    where: { id: data.materialId, section: { module: { courseModules: { some: { courseId: enrollment.courseId } } } } },
+  });
+  if (!lesson) throw notFound('Lesson not in this course');
   const note = await prisma.lessonNote.create({ data: { ...data, userId: session.userId } });
   return NextResponse.json({ note }, { status: 201 });
 });

@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
-import { withHandler, notFound } from '@/lib/utils/errors';
+import { withHandler, notFound, forbidden } from '@/lib/utils/errors';
 import { requireRole, tenantScope } from '@/lib/auth/rbac';
+import { revokeAllForUser } from '@/lib/auth/tokens';
+import { enqueue } from '@/lib/jobs/queue';
+import { generateTempPassword, stripTempPassword } from '@/lib/auth/passwords';
 
-/** POST /api/team/[id]/reset-password — generate a new temp password for team member */
+/** POST /api/team/[id]/reset-password — new temporary password (shown once + emailed, never stored). */
 export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: string } }) => {
   const session = await requireRole(req, ['SUPER_ADMIN', 'ADMIN']);
   const scope = tenantScope(session);
@@ -18,18 +20,23 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
     },
   });
   if (!user) throw notFound('Team member not found');
+  // An Admin may reset instructors only — admin accounts are managed by the Super Admin
+  if (user.role !== 'INSTRUCTOR' && session.role !== 'SUPER_ADMIN')
+    throw forbidden('Only the Super Admin can reset an admin password');
 
-  const tempPassword = crypto.randomBytes(6).toString('base64url');
-  const existingProfile = (user.profile as any) ?? {};
-
+  const tempPassword = generateTempPassword();
   await prisma.user.update({
     where: { id: user.id },
     data: {
       passwordHash: await bcrypt.hash(tempPassword, 12),
       mustChangePassword: true,
-      profile: { ...existingProfile, tempPassword },
+      failedAttempts: 0,
+      lockedUntil: null,
+      profile: stripTempPassword(user.profile),
     },
   });
+  await revokeAllForUser(user.id);
+  await enqueue('EMAIL_WELCOME', { to: user.email, name: user.name, email: user.email, tempPassword, reset: true });
 
-  return NextResponse.json({ tempPassword });
+  return NextResponse.json({ tempPassword, user: { id: user.id, name: user.name, email: user.email, phone: user.phone } });
 });

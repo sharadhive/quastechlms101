@@ -31,8 +31,8 @@ export default function InstructorNotes() {
   }, [batchId]);
 
   // Unique students and materials for filters
-  const students = [...new Set((data?.notes ?? []).map((n: any) => n.studentName))].sort();
-  const materials = [...new Set((data?.notes ?? []).map((n: any) => n.materialTitle))].sort();
+  const students = [...new Set<string>((data?.notes ?? []).map((n: any) => String(n.studentName)))].sort();
+  const materials = [...new Set<string>((data?.notes ?? []).map((n: any) => String(n.materialTitle)))].sort();
 
   // Filtered notes
   const filtered = (data?.notes ?? []).filter((n: any) => {

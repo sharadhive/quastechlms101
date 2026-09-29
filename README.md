@@ -31,12 +31,29 @@ Built per **SRS v2.0 Final**. One Next.js app (API Route Handlers) · TypeScript
 
 Requirements: **Node 20+**, **MySQL 8**.
 
+> **v3.5:** see `CHANGES-v3.5.md` for everything that changed (video streaming, uploads,
+> security, lifecycle, new course builder) and a click-by-click test checklist.
+
+**Fresh database (new laptop / new server):**
+
 ```bash
 npm install
-cp .env.example .env        # set DATABASE_URL, JWT_SECRET (32+ chars), CRON_KEY
-npx prisma migrate dev --name init
+cp .env.example .env        # set DATABASE_URL, JWT_SECRET (32+ chars), CRON_KEY, APP_URL
+npx prisma migrate deploy   # ONE clean baseline migration creates every table
 npm run db:seed             # superadmin@quastech.local / ChangeMe@123
-npx prisma db push        # creates all new tables (integrations, history, variants, etc.)
+```
+
+**Database you already had (built with the old migrations / `db push`) — run once:**
+
+```bash
+npm run db:baseline-existing   # syncs tables, then marks the new baseline as applied (no data is deleted)
+```
+
+Old migrations were moved to `prisma/_old_migrations_do_not_use/` (they cannot run on an empty database).
+
+**Demo data and running:**
+
+```bash
 npm run db:demo             # FULL DEMO DATA: all role logins, 2 courses w/ PDFs+quizzes,
                             # fees+receipts, attendance, results, certificate.
                             # Optional: drop any .mp4 at demo-assets/sample.mp4 first
@@ -83,6 +100,18 @@ curl -b jar -X POST $B/api/enrollments/manual -H 'Content-Type: application/json
 **cPanel:** MySQL DB in cPanel → Git clone → *Setup Node.js App* (Node 20) → `npm install && npx prisma migrate deploy && npm run build` → cron each minute: `curl -s -H "x-cron-key: <CRON_KEY>" https://domain.com/api/cron/process` → restart.
 
 **VPS:** Node 20 + MySQL + Nginx → same build → `pm2 start "npm start" --name quastech && pm2 start "npm run worker" --name quastech-worker && pm2 save`.
+
+**Large video uploads behind Nginx:** uploads arrive in 5 MB pieces, so allow a little more than that and
+don't buffer them:
+
+```nginx
+client_max_body_size 20m;
+proxy_request_buffering off;
+proxy_read_timeout 300s;
+```
+
+Set `APP_URL` to the real domain (used in emails + certificates) and `APP_TIMEZONE=Asia/Kolkata`.
+Run `npm run check` (type-check + build) before every deploy — type errors now stop the build.
 
 ## Post-completion integrations (SRS Ch. 9 — adapters ready)
 

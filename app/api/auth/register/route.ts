@@ -1,12 +1,10 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { withHandler, badRequest, conflict } from '@/lib/utils/errors';
 import { parseBody } from '@/lib/utils/validate';
-import { signAccessToken } from '@/lib/auth/jwt';
-import { issueRefreshToken } from '@/lib/auth/tokens';
-import { setAuthCookies } from '@/lib/auth/session';
+import { startSession } from '@/lib/auth/session';
 
 const ORG_ID = process.env.NEXT_PUBLIC_ORG_ID ?? 'seed-org';
 
@@ -14,7 +12,7 @@ const schema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Invalid email address'),
   phone: z.string().min(6, 'Phone must be at least 6 digits').optional(),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   location: z.string().optional(),
   education: z.string().optional(),
   collegeName: z.string().optional(),
@@ -71,21 +69,6 @@ export const POST = withHandler(async (req: NextRequest) => {
     },
   });
 
-  // Auto-login: issue tokens
-  const session = {
-    userId: user.id,
-    role: user.role,
-    organizationId: user.organizationId,
-    branchId: user.branchId,
-  };
-  const access = await signAccessToken(session);
-  const refresh = await issueRefreshToken(user.id);
-
-  const res = NextResponse.json({
-    role: user.role,
-    name: user.name,
-    mustChangePassword: false,
-  }, { status: 201 });
-
-  return setAuthCookies(res, access, refresh.raw, refresh.maxAgeSec);
+  // Auto-login
+  return startSession(user, 201);
 });

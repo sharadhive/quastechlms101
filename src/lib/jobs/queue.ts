@@ -1,9 +1,11 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { runJob } from './processors';
+import { encryptJson } from '@/lib/crypto';
 
 export type JobType =
   | 'EMAIL_WELCOME'
+  | 'EMAIL_ENROLLED'
   | 'EMAIL_FEE_REMINDER'
   | 'EMAIL_SESSION_REMINDER'
   | 'EMAIL_RESULT_PUBLISHED'
@@ -12,15 +14,25 @@ export type JobType =
   | 'RENDER_RECEIPT_PDF';
 
 export async function enqueue(type: JobType, payload: Record<string, unknown>, runAt?: Date) {
+  // Never keep a plain-text password in the job table — encrypt it (decrypted only when mailing)
+  const { tempPassword, ...rest } = payload;
+  const data = tempPassword ? { ...rest, tempPasswordEnc: encryptJson({ p: String(tempPassword) }) } : rest;
   return prisma.jobQueue.create({
-    data: { type, payload: payload as Prisma.InputJsonValue, runAt: runAt ?? new Date() },
+    data: { type, payload: data as Prisma.InputJsonValue, runAt: runAt ?? new Date() },
   });
 }
 
 const BACKOFF_MIN = [1, 10, 60]; // 1m / 10m / 1h (SRS 12.10)
+const STALE_RUNNING_MIN = 15; // a worker that crashed mid-job leaves it RUNNING — hand it back
 
 /** Claim up to `limit` due jobs atomically and run them. Used by the PM2 worker AND /api/cron/process. */
 export async function processJobs(workerId: string, limit = 10): Promise<number> {
+  // Recover jobs stuck in RUNNING (worker restarted / crashed)
+  await prisma.jobQueue.updateMany({
+    where: { status: 'RUNNING', updatedAt: { lt: new Date(Date.now() - STALE_RUNNING_MIN * 60_000) } },
+    data: { status: 'PENDING', lockedBy: null },
+  });
+
   // Atomic claim: row-locked UPDATE, then read back what we claimed.
   const claimed = await prisma.$executeRaw`
     UPDATE JobQueue SET status = 'RUNNING', lockedBy = ${workerId}, updatedAt = NOW()

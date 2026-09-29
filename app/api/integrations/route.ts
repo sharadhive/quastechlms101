@@ -72,14 +72,14 @@ export const POST = withHandler(async (req: NextRequest) => {
     const row = await tx.integration.create({
       data: {
         organizationId: session.organizationId, provider, name,
-        config, secrets: encryptJson(secrets),
+        config: config as any, secrets: encryptJson(secrets),
         isActive: activate, createdById: session.userId,
       },
     });
     await tx.integrationHistory.create({
       data: {
         integrationId: row.id, organizationId: session.organizationId, provider, name,
-        config, secrets: row.secrets, action: activate ? 'ACTIVATED' : 'CREATED',
+        config: config as any, secrets: row.secrets, action: activate ? 'ACTIVATED' : 'CREATED',
         changedById: session.userId,
       },
     });

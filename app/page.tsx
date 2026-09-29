@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ComboBox from '@/components/ComboBox';
+import { clearMe } from '@/lib/client/useMe';
 
 const ORG_ID = process.env.NEXT_PUBLIC_ORG_ID ?? 'seed-org';
 
@@ -68,7 +69,7 @@ export default function Landing() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Registration failed');
       localStorage.setItem('qs_role', data.role);
-      localStorage.setItem('qs_name', data.name ?? '');
+      clearMe(); localStorage.setItem('qs_name', data.name ?? '');
       setDone(true);
       router.push('/app/explore');
     } catch (e: any) { setErr(e.message); }

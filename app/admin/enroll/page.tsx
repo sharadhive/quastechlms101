@@ -14,6 +14,11 @@ export default function Enroll() {
   const [searched, setSearched] = useState(false);
 
   useEffect(() => { api('/api/courses?status=PUBLISHED').then((d) => setCourses(d.courses)); }, []);
+  // Opened from a learner profile → learner already chosen
+  useEffect(() => {
+    const lid = new URLSearchParams(window.location.search).get('learnerId');
+    if (lid) api(`/api/learners/${lid}`).then((d) => setLearner(d.learner)).catch(() => {});
+  }, []);
   useEffect(() => {
     if (!courseId) return setBatches([]);
     api(`/api/courses/${courseId}`).then((d) => setBatches(d.course.batches)); // batches auto-load (SRS 2.5)
@@ -43,7 +48,7 @@ export default function Enroll() {
         setLearner(d.learner);
       } else {
         setLearner(d.learner);
-        alert(`Learner created! Temp password: ${d.tempPassword}`);
+        alert(`Learner account created.\n\nTemporary password: ${d.tempPassword}\n\nIt was also emailed to the learner (if an email was given). Copy it now — it is not stored.`);
       }
     } catch (e: any) { setErr(e.message); } finally { setConverting(null); }
   };
@@ -69,7 +74,8 @@ export default function Enroll() {
     <div className="card">
       <h2 style={{ marginTop: 0 }}>✅ Enrolled successfully</h2>
       <p>Pending amount: <b>₹{result.pendingAmount}</b>{result.receiptNo && <> · Receipt: <b>{result.receiptNo}</b></>}</p>
-      <p className="muted">Welcome email queued — course is live in the student panel immediately.</p>
+      <p className="muted">Enrolment email queued — the course is live in the student panel immediately.</p>
+      {learner && <p><a href={`/admin/learners/${learner.id}`}>Open {learner.name}’s profile →</a></p>}
       <button className="btn" onClick={() => { setResult(null); setLearner(null); setQ(''); setFound([]); setEnquiries([]); setSearched(false); setCourseId(''); setBatchId(''); setFee({ totalFee: '', discount: '0', amount: '', mode: 'CASH', referenceNo: '' }); }}>Enroll another</button>
     </div>
   );
@@ -123,9 +129,12 @@ export default function Enroll() {
           <option value="">Select…</option>{courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
         </select></div>
         <div><label>Batch</label><select value={batchId} onChange={(e) => setBatchId(e.target.value)}>
-          <option value="">Select…</option>{batches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          <option value="">Select…</option>{batches.map((b) => <option key={b.id} value={b.id}>{b.name}{b._count ? ` · ${b._count.enrollments} students` : ''}</option>)}
         </select></div>
       </div>
+      {courseId && batches.length === 0 && (
+        <p className="muted">This course has no batch yet. <a href={`/admin/batches?courseId=${courseId}`}>Create a batch first →</a></p>
+      )}
     </div>
     <div className="card">
       <h2 style={{ marginTop: 0 }}>3 · Fee (manual — SRS 2.5)</h2>

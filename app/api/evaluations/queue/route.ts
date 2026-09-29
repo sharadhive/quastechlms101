@@ -11,7 +11,7 @@ export const GET = withHandler(async (req: NextRequest) => {
   let learnerFilter = {};
   if (session.role === 'INSTRUCTOR') {
     const myLearners = await prisma.enrollment.findMany({
-      where: { batch: { instructorId: session.userId }, status: 'ACTIVE' },
+      where: { batch: { instructorId: session.userId }, status: { in: ['ACTIVE', 'COMPLETED'] } },
       select: { learnerId: true },
     });
     learnerFilter = { learnerId: { in: myLearners.map((e) => e.learnerId) } };

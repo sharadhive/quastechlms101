@@ -12,7 +12,7 @@ export const GET = withHandler(async (req: NextRequest) => {
   const sessions = await prisma.classSession.findMany({
     where: {
       scheduledAt: { gte: from, lte: to },
-      batch: { enrollments: { some: { learnerId: session.userId, status: 'ACTIVE' } } },
+      batch: { enrollments: { some: { learnerId: session.userId, status: { in: ['ACTIVE', 'COMPLETED'] } } } },
     },
     select: {
       id: true, title: true, scheduledAt: true, meetLink: true,

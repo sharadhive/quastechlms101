@@ -45,17 +45,18 @@ export const POST = withHandler(async (req: NextRequest) => {
   const scope = tenantScope(session);
   const input = await parseBody(req, schema);
   const { fee } = input;
+  const discount = fee.discount ?? 0;
 
-  if (fee.discount > fee.totalFee) throw badRequest('Discount cannot exceed total fee');
-  const netFee = fee.totalFee - fee.discount;
+  if (discount > fee.totalFee) throw badRequest('Discount cannot exceed total fee');
+  const netFee = fee.totalFee - discount;
   const firstAmount = fee.firstPayment?.amount ?? 0;
   if (firstAmount > netFee) throw badRequest('Payment cannot exceed the net payable fee');
 
   // Validate learner + batch INSIDE the caller's scope before writing anything
   const learner = await prisma.user.findFirst({
-    where: { id: input.learnerId, role: 'STUDENT', organizationId: scope.organizationId },
+    where: { id: input.learnerId, role: 'STUDENT', organizationId: scope.organizationId, isActive: true },
   });
-  if (!learner) throw notFound('Learner not found');
+  if (!learner) throw notFound('Learner not found or deactivated');
 
   const batch = await prisma.batch.findFirst({
     where: {
@@ -63,9 +64,24 @@ export const POST = withHandler(async (req: NextRequest) => {
       course: { organizationId: scope.organizationId },
       ...(scope.branchId ? { branchId: scope.branchId } : {}),
     },
-    include: { course: { select: { id: true, title: true } } },
+    include: {
+      course: { select: { id: true, title: true } },
+      _count: { select: { enrollments: { where: { status: { in: ['ACTIVE', 'COMPLETED'] } } } } },
+    },
   });
   if (!batch) throw notFound('Batch not found');
+  if (batch.capacity && batch._count.enrollments >= batch.capacity)
+    throw conflict(`Batch "${batch.name}" is full (${batch.capacity} seats). Pick another batch or raise its capacity.`);
+
+  const previous = await prisma.enrollment.findUnique({
+    where: { learnerId_courseId: { learnerId: learner.id, courseId: batch.course.id } },
+  });
+  if (previous)
+    throw conflict(
+      previous.status === 'DROPPED' || previous.status === 'EXPIRED'
+        ? `This learner has a ${previous.status.toLowerCase()} enrollment for this course — reactivate it from the learner's profile instead.`
+        : 'This learner is already enrolled in this course.',
+    );
 
   // ── One transaction: enrollment + fee account + first payment + audit (SRS 12.3) ──
   let result;
@@ -85,7 +101,7 @@ export const POST = withHandler(async (req: NextRequest) => {
         data: {
           enrollmentId: enrollment.id,
           totalFee: new Prisma.Decimal(fee.totalFee),
-          discount: new Prisma.Decimal(fee.discount),
+          discount: new Prisma.Decimal(discount),
           pendingAmount: new Prisma.Decimal(netFee - firstAmount),
           installments: (fee.installments as any) ?? undefined,
           notes: fee.notes,
@@ -120,7 +136,7 @@ export const POST = withHandler(async (req: NextRequest) => {
       return { enrollment, feeAccount, payment };
     });
   } catch (err: any) {
-    if (err?.code === 'P2002') throw conflict('Learner is already enrolled in this batch');
+    if (err?.code === 'P2002') throw conflict('This learner is already enrolled in this course');
     throw err;
   }
 
@@ -137,13 +153,13 @@ export const POST = withHandler(async (req: NextRequest) => {
     }
   }
 
-  // After commit: welcome email via job queue (SRS 12.3)
-  await enqueue('EMAIL_WELCOME', {
+  // After commit: enrolment email via job queue (SRS 12.3). Login details were sent when the
+  // account was created; this mail links to the login + "forgot password" pages.
+  await enqueue('EMAIL_ENROLLED', {
     to: learner.email,
     name: learner.name,
-    email: learner.email,
-    tempPassword: '(use your existing password or reset via OTP)',
     courseTitle: batch.course.title,
+    batchName: batch.name,
   });
 
   if (result.payment)

@@ -5,6 +5,8 @@ import { withHandler, notFound, forbidden } from '@/lib/utils/errors';
 import { parseBody } from '@/lib/utils/validate';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
 import { requireSession } from '@/lib/auth/session';
+import { can } from '@/lib/auth/permissions';
+import { LIVE_STATUSES } from '@/lib/auth/enrollment';
 
 /** Role-aware feed: students see ALL + announcements for their courses/batches. */
 export const GET = withHandler(async (req: NextRequest) => {
@@ -12,15 +14,16 @@ export const GET = withHandler(async (req: NextRequest) => {
   let where: any = { organizationId: session.organizationId };
   if (session.role === 'STUDENT') {
     const enrollments = await prisma.enrollment.findMany({
-      where: { learnerId: session.userId, status: { in: ['ACTIVE', 'COMPLETED'] } },
+      where: { learnerId: session.userId, status: { in: LIVE_STATUSES } },
       select: { courseId: true, batchId: true },
     });
+    const batchIds = enrollments.map((e) => e.batchId).filter((b): b is string => !!b);
     where = {
       organizationId: session.organizationId,
       OR: [
         { audience: 'ALL' },
         { audience: 'COURSE', courseId: { in: enrollments.map((e) => e.courseId) } },
-        { audience: 'BATCH', batchId: { in: enrollments.map((e) => e.batchId) } },
+        { audience: 'BATCH', batchId: { in: batchIds } },
       ],
     };
   }
@@ -45,6 +48,8 @@ export const POST = withHandler(async (req: NextRequest) => {
 
   // Instructors may only announce to their OWN batches (permission model per requirement)
   if (session.role === 'INSTRUCTOR') {
+    if (!(await can(session, 'announce')))
+      throw forbidden('Ask an admin to grant you "Post announcements"');
     if (data.audience !== 'BATCH' || !data.batchId)
       throw forbidden('Instructors can announce only to their own batches');
     const own = await prisma.batch.findFirst({

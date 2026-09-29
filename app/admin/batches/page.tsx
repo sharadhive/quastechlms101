@@ -11,7 +11,8 @@ export default function Batches() {
   const [instructors, setInstructors] = useState<any[]>([]);
   const [geo, setGeo] = useState({ state: '', city: '', branchId: '' });
   const [fCourse, setFCourse] = useState('');
-  const [f, setF] = useState({ courseId: '', branchId: '', instructorId: '', name: '', startDate: '', batchTime: '', schedule: '' });
+  const empty = { courseId: '', branchId: '', instructorId: '', name: '', startDate: '', endDate: '', capacity: '', batchTime: '', schedule: '' };
+  const [f, setF] = useState(empty);
   const [err, setErr] = useState(''); const [ok, setOk] = useState('');
 
   const load = () => {
@@ -21,7 +22,10 @@ export default function Batches() {
   useEffect(() => {
     api('/api/courses').then((d) => setCourses(d.courses));
     api('/api/branches').then((d) => setBranches(d.branches));
-    api('/api/team?role=INSTRUCTOR').then((d) => setInstructors(d.team ?? [])).catch(() => {});
+    api('/api/team?role=INSTRUCTOR').then((d) => setInstructors((d.team ?? []).filter((t: any) => t.isActive))).catch(() => {});
+    // Opened from a course ("+ Create a batch") → course pre-selected
+    const cid = new URLSearchParams(window.location.search).get('courseId');
+    if (cid) setF((x) => ({ ...x, courseId: cid }));
   }, []);
   useEffect(() => { load(); }, [geo.state, geo.city, geo.branchId, fCourse]);
 
@@ -31,9 +35,11 @@ export default function Batches() {
       await api('/api/batches', { method: 'POST', json: {
         courseId: f.courseId, branchId: f.branchId, instructorId: f.instructorId || undefined,
         name: f.name, startDate: new Date(f.startDate).toISOString(),
+        endDate: f.endDate ? new Date(f.endDate).toISOString() : undefined,
+        capacity: f.capacity ? Number(f.capacity) : undefined,
         batchTime: f.batchTime || undefined, schedule: f.schedule || undefined } });
-      setOk('Batch created ✓');
-      setF({ courseId: '', branchId: '', instructorId: '', name: '', startDate: '', batchTime: '', schedule: '' });
+      setOk('Batch created ✓ — open it to schedule classes');
+      setF(empty);
       load();
     } catch (e: any) { setErr(e.message); }
   };
@@ -61,6 +67,10 @@ export default function Batches() {
       <div className="row">
         <div><label>Batch name</label><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
         <div><label>Start date</label><input type="date" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} /></div>
+        <div><label>End date (optional)</label><input type="date" value={f.endDate} onChange={(e) => setF({ ...f, endDate: e.target.value })} /></div>
+        <div><label>Seats (optional)</label><input type="number" min={1} placeholder="e.g. 30" value={f.capacity} onChange={(e) => setF({ ...f, capacity: e.target.value })} /></div>
+      </div>
+      <div className="row">
         <div><label>Batch time</label><input placeholder="e.g. 10:00 AM - 12:00 PM" value={f.batchTime} onChange={(e) => setF({ ...f, batchTime: e.target.value })} /></div>
         <div><label>Schedule</label>
           <select value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })}>
@@ -94,7 +104,7 @@ export default function Batches() {
               <td><span className="badge blue">{b.branch.city}, {b.branch.state}</span></td>
               <td>{b.batchTime || <span className="muted">—</span>}</td>
               <td>{b.schedule ? <span className="badge gray">{b.schedule}</span> : <span className="muted">—</span>}</td>
-              <td>{b._count.enrollments}</td>
+              <td>{b._count.enrollments}{b.capacity ? ` / ${b.capacity}` : ''}</td>
               <td>{b._count.sessions}</td>
               <td><Link href={`/admin/batches/${b.id}`}>Open →</Link></td>
             </tr>

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withHandler, notFound, badRequest } from '@/lib/utils/errors';
 import { requireRole } from '@/lib/auth/rbac';
+import { LIVE_STATUSES } from '@/lib/auth/enrollment';
 
 /**
  * GET /api/notes/batch?batchId=xxx
@@ -22,7 +23,7 @@ export const GET = withHandler(async (req: NextRequest) => {
 
   // Get all enrolled student IDs in this batch
   const enrollments = await prisma.enrollment.findMany({
-    where: { batchId, status: 'ACTIVE' },
+    where: { batchId, status: { in: LIVE_STATUSES } },
     select: { id: true, learnerId: true, learner: { select: { id: true, name: true } } },
   });
   const learnerIds = enrollments.map((e) => e.learnerId);

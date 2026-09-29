@@ -3,9 +3,11 @@ import { ZodError } from 'zod';
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -23,15 +25,28 @@ export function withHandler<Ctx = unknown>(fn: Handler<Ctx>): Handler<Ctx> {
     try {
       return await fn(req, ctx);
     } catch (err: any) {
+      // Next.js control-flow signals (dynamic rendering, redirects, notFound) must pass through
+      if (typeof err?.digest === 'string' && (err.digest === 'DYNAMIC_SERVER_USAGE' || err.digest.startsWith('NEXT_')))
+        throw err;
       if (err instanceof ApiError)
-        return NextResponse.json({ error: err.message }, { status: err.status });
+        return NextResponse.json(
+          { error: err.message, ...(err.code ? { code: err.code } : {}) },
+          { status: err.status },
+        );
       if (err instanceof ZodError)
         return NextResponse.json(
           { error: 'Validation failed', details: err.flatten().fieldErrors },
           { status: 400 },
         );
       if (err?.code === 'P2002')
-        return NextResponse.json({ error: 'Duplicate record' }, { status: 409 });
+        return NextResponse.json({ error: 'This record already exists (duplicate value)' }, { status: 409 });
+      if (err?.code === 'P2003')
+        return NextResponse.json(
+          { error: 'This item is still used by other records and cannot be removed' },
+          { status: 409 },
+        );
+      if (err?.code === 'P2025')
+        return NextResponse.json({ error: 'Record not found' }, { status: 404 });
       console.error('[api]', err);
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }

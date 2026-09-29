@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { withHandler, notFound } from '@/lib/utils/errors';
+import { withHandler, notFound, forbidden } from '@/lib/utils/errors';
 import { parseBody } from '@/lib/utils/validate';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
-import { enqueue } from '@/lib/jobs/queue';
+import { can } from '@/lib/auth/permissions';
+import { queueSessionReminders } from '@/lib/sessions';
 
 const schema = z.object({
   title: z.string().min(1).optional(),       // optional — auto-set from topic name if not provided
@@ -16,6 +17,8 @@ const schema = z.object({
 
 export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: string } }) => {
   const session = await requireRole(req, [...ADMIN_ROLES, 'INSTRUCTOR']);
+  if (session.role === 'INSTRUCTOR' && !(await can(session, 'create_sessions')))
+    throw forbidden('Ask an admin to grant you "Schedule their own classes" to create sessions');
   const scope = tenantScope(session);
   const data = await parseBody(req, schema);
 
@@ -78,11 +81,7 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
   }
 
   // reminders: T-24h and T-1h (skips past times automatically)
-  for (const offsetH of [24, 1]) {
-    const runAt = new Date(scheduledAt.getTime() - offsetH * 3600_000);
-    if (runAt > new Date())
-      await enqueue('EMAIL_SESSION_REMINDER', { sessionId: cls.id, offsetH }, runAt);
-  }
+  await queueSessionReminders(cls.id, scheduledAt);
 
   return NextResponse.json({ session: cls, linkedTopics: sectionIds.length }, { status: 201 });
 });

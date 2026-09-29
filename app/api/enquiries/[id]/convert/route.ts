@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import { generateTempPassword } from '@/lib/auth/passwords';
+import { enqueue } from '@/lib/jobs/queue';
 import { prisma } from '@/lib/prisma';
 import { withHandler, notFound, conflict } from '@/lib/utils/errors';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
@@ -42,7 +43,7 @@ export const POST = withHandler(async (req: NextRequest, { params }: { params: P
   const branchId =
     session.role === 'BRANCH_ADMIN' ? session.branchId : (enquiry.branchId ?? session.branchId);
 
-  const tempPassword = crypto.randomBytes(6).toString('base64url');
+  const tempPassword = generateTempPassword();
   const learner = await prisma.user.create({
     data: {
       organizationId: scope.organizationId,
@@ -58,5 +59,7 @@ export const POST = withHandler(async (req: NextRequest, { params }: { params: P
     select: { id: true, name: true, email: true, phone: true },
   });
 
+  if (!learner.email.endsWith('@placeholder.quastech'))
+    await enqueue('EMAIL_WELCOME', { to: learner.email, name: learner.name, email: learner.email, tempPassword });
   return NextResponse.json({ learner, tempPassword, alreadyExists: false }, { status: 201 });
 });

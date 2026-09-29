@@ -56,7 +56,7 @@ export default function CourseDetail() {
     setBusy('counsel');
     try {
       const orgId = process.env.NEXT_PUBLIC_ORG_ID ?? 'seed-org';
-      await fetch('/api/enquiries', {
+      const res = await fetch('/api/enquiries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -67,8 +67,9 @@ export default function CourseDetail() {
           source: 'counselling_request',
         }),
       });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Could not send your request');
       setEnquirySent(true);
-    } catch {}
+    } catch (e: any) { setErr(e.message); }
     finally { setBusy(''); }
   };
 

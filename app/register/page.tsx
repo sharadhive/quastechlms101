@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ComboBox from '@/components/ComboBox';
+import { clearMe } from '@/lib/client/useMe';
 
 interface Lookups {
   locations: string[];
@@ -28,13 +29,13 @@ export default function Register() {
       .catch(() => {});
   }, []);
 
-  const strength = f.password.length === 0 ? 0 : f.password.length < 6 ? 1 : f.password.length < 10 ? 2 : 3;
+  const strength = f.password.length === 0 ? 0 : f.password.length < 8 ? 1 : f.password.length < 12 ? 2 : 3;
   const strengthColor = ['#e5e7eb', '#ef4444', '#f59e0b', '#22c55e'][strength];
   const strengthLabel = ['', 'Weak', 'Good', 'Strong'][strength];
 
   const passwordsMatch = f.confirmPassword.length === 0 || f.password === f.confirmPassword;
 
-  const canSubmit = f.name && f.email && f.password.length >= 6
+  const canSubmit = f.name && f.email && f.password.length >= 8
     && f.password === f.confirmPassword && !busy;
 
   const submit = async () => {
@@ -60,7 +61,7 @@ export default function Register() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Registration failed');
       localStorage.setItem('qs_role', data.role);
-      localStorage.setItem('qs_name', data.name ?? '');
+      clearMe(); localStorage.setItem('qs_name', data.name ?? '');
       router.push('/app/explore');
     } catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }
@@ -93,7 +94,7 @@ export default function Register() {
 
         <label>Password *</label>
         <input value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} type="password"
-          placeholder="Min 6 characters" />
+          placeholder="Min 8 characters" />
         {f.password.length > 0 && (
           <div className="pass-strength">
             <div className="bar" style={{ width: `${(strength / 3) * 100}%`, background: strengthColor }} />

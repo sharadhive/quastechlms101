@@ -23,6 +23,7 @@ export const POST = withHandler(async (req: NextRequest) => {
     role: user.role,
     organizationId: user.organizationId,
     branchId: user.branchId,
+    mustChangePassword: user.mustChangePassword,
   });
 
   const res = NextResponse.json({ ok: true });

@@ -26,6 +26,10 @@ export const POST = withHandler(async (req: NextRequest) => {
   if (!order) {
     return NextResponse.redirect(`${appUrl}/app/payment-failed?reason=order_not_found`);
   }
+  // Callback replayed / page refreshed after success → don't process twice
+  if (order.status === 'PAID') {
+    return NextResponse.redirect(`${appUrl}/app/payment-success?txn=${txnId}&course=${order.courseId}`);
+  }
 
   // Verify hash
   const { verified, status } = await verifyCallback(params, order.organizationId);

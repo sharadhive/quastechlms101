@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { withHandler, notFound } from '@/lib/utils/errors';
+import { withHandler, notFound, badRequest } from '@/lib/utils/errors';
 import { parseBody } from '@/lib/utils/validate';
-import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
+import { requireRole, ADMIN_ROLES } from '@/lib/auth/rbac';
+import { assertCanEditContent } from '@/lib/auth/content';
 
 const schema = z.object({
   title: z.string().min(2).optional(),
@@ -12,34 +13,30 @@ const schema = z.object({
 });
 
 export const PATCH = withHandler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const session = await requireRole(req, ADMIN_ROLES);
-  const scope = tenantScope(session);
-  const mod = await prisma.module.findFirst({
-    where: { id: ctx.params.id, organizationId: scope.organizationId },
-  });
-  if (!mod) throw notFound('Module not found');
+  const session = await requireRole(req, [...ADMIN_ROLES, 'INSTRUCTOR']);
+  await assertCanEditContent(session, { moduleId: ctx.params.id });
   const data = await parseBody(req, schema);
 
-  if (data.title) await prisma.module.update({ where: { id: mod.id }, data: { title: data.title } });
-  if (data.courseId && typeof data.position === 'number')
+  if (data.title) await prisma.module.update({ where: { id: ctx.params.id }, data: { title: data.title } });
+  if (data.courseId && typeof data.position === 'number') {
+    const link = await prisma.courseModule.findUnique({
+      where: { courseId_moduleId: { courseId: data.courseId, moduleId: ctx.params.id } },
+    });
+    if (!link) throw badRequest('This module is not part of that course');
     await prisma.courseModule.update({
-      where: { courseId_moduleId: { courseId: data.courseId, moduleId: mod.id } },
+      where: { courseId_moduleId: { courseId: data.courseId, moduleId: ctx.params.id } },
       data: { position: data.position },
     });
+  }
   return NextResponse.json({ ok: true });
 });
 
 /** Detach a module from a course (module stays in the library). */
 export const DELETE = withHandler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const session = await requireRole(req, ADMIN_ROLES);
-  const scope = tenantScope(session);
+  const session = await requireRole(req, [...ADMIN_ROLES, 'INSTRUCTOR']);
   const courseId = req.nextUrl.searchParams.get('courseId');
-  const mod = await prisma.module.findFirst({
-    where: { id: ctx.params.id, organizationId: scope.organizationId },
-  });
-  if (!mod || !courseId) throw notFound('Module not found');
-  await prisma.courseModule.delete({
-    where: { courseId_moduleId: { courseId, moduleId: mod.id } },
-  });
+  if (!courseId) throw notFound('courseId required');
+  await assertCanEditContent(session, { courseId });
+  await prisma.courseModule.deleteMany({ where: { courseId, moduleId: ctx.params.id } });
   return NextResponse.json({ ok: true });
 });

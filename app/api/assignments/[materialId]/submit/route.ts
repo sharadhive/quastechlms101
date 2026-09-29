@@ -5,6 +5,8 @@ import { withHandler, notFound, forbidden, badRequest } from '@/lib/utils/errors
 import { parseBody } from '@/lib/utils/validate';
 import { requireRole } from '@/lib/auth/rbac';
 import { getStorage } from '@/lib/adapters/storage';
+import { accessibleEnrollment } from '@/lib/auth/enrollment';
+import { keyBelongsTo } from '@/lib/utils/files';
 
 const schema = z.object({ fileKey: z.string().min(5) });
 
@@ -21,12 +23,12 @@ export const POST = withHandler(
 
     const enrollment = await prisma.enrollment.findFirst({
       where: {
-        learnerId: session.userId,
-        status: 'ACTIVE',
+        ...accessibleEnrollment(session.userId),
         course: { courseModules: { some: { moduleId: material.section.moduleId } } },
       },
     });
     if (!enrollment) throw forbidden('Not enrolled');
+    if (!keyBelongsTo(session.organizationId, fileKey, ['assignment'])) throw badRequest('Invalid file — upload again');
     if (!(await getStorage().exists(fileKey))) throw badRequest('Upload the file first');
 
     const meta = (material.quizSchema as any) ?? {}; // assignment meta rides in the same JSON field

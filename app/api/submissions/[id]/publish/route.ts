@@ -9,10 +9,17 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
   const session = await requireRole(req, [...ADMIN_ROLES, 'INSTRUCTOR']);
   const scope = tenantScope(session);
 
+  // instructors may publish only for learners in their own batches
+  const myLearners =
+    session.role === 'INSTRUCTOR'
+      ? (await prisma.enrollment.findMany({ where: { batch: { instructorId: session.userId } }, select: { learnerId: true } }))
+          .map((e) => e.learnerId)
+      : null;
   const submission = await prisma.submission.findFirst({
     where: {
       id: ctx.params.id,
       material: { section: { module: { organizationId: scope.organizationId } } },
+      ...(myLearners ? { learnerId: { in: myLearners } } : {}),
     },
     include: { material: { select: { title: true } } },
   });
@@ -27,7 +34,7 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
         type: 'RESULT_PUBLISHED',
         title: 'Result published',
         body: `Your result for "${submission.material.title}" is available.`,
-        link: '/app/exams',
+        link: '/app/results',
       },
     }),
   ]);

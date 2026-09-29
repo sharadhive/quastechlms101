@@ -8,6 +8,6 @@ import type { MailProvider } from './index';
 export const consoleMailer: MailProvider = {
   async send({ to, subject, body, meta }) {
     console.log(`\n[MAIL → ${to}] ${subject}\n${body}\n`);
-    await prisma.outbox.create({ data: { toEmail: to, subject, body, meta: meta ?? undefined } });
+    await prisma.outbox.create({ data: { toEmail: to, subject, body, meta: (meta as any) ?? undefined } });
   },
 };

@@ -2,15 +2,16 @@ import Shell, { NavGroup } from '@/components/Shell';
 
 const groups: NavGroup[] = [
   { items: [{ href: '/admin', label: 'Dashboard', icon: 'home' }] },
-  { title: 'Users', items: [
+  { title: 'Learning', items: [
+    { href: '/admin/courses', label: 'Courses', icon: 'book' },
+    { href: '/admin/batches', label: 'Batches & Classes', icon: 'layers' },
+    { href: '/admin/recordings', label: 'Class Recordings', icon: 'video' },
+  ]},
+  { title: 'People', items: [
     { href: '/admin/enroll', label: 'New Enrolment', icon: 'plus' },
     { href: '/admin/learners', label: 'Learners', icon: 'users' },
     { href: '/admin/enquiries', label: 'Enquiries', icon: 'bell' },
-    { href: '/admin/team', label: 'Team', icon: 'users' },
-  ]},
-  { title: 'Learning', items: [
-    { href: '/admin/courses', label: 'Courses', icon: 'book' },
-    { href: '/admin/batches', label: 'Batches', icon: 'layers' },
+    { href: '/admin/team', label: 'Team & Instructors', icon: 'shield' },
   ]},
   { title: 'Finance', items: [
     { href: '/admin/fees', label: 'Fees', icon: 'cash' },
@@ -24,7 +25,7 @@ const groups: NavGroup[] = [
     { href: '/admin/branches', label: 'Branches', icon: 'pin' },
     { href: '/admin/analytics', label: 'Analytics', icon: 'chart' },
   ]},
-  { title: 'Settings', superAdminOnly: true, items: [
+  { title: 'Super Admin', superAdminOnly: true, items: [
     { href: '/admin/integrations', label: 'Integrations', icon: 'plug' },
   ]},
 ];

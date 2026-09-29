@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { withHandler, notFound, forbidden } from '@/lib/utils/errors';
 import { requireSession } from '@/lib/auth/session';
 import { getStorage } from '@/lib/adapters/storage';
+import { accessibleEnrollment } from '@/lib/auth/enrollment';
+import { taughtCourseIds } from '@/lib/auth/content';
 
 const SIGNED_TTL_SEC = 4 * 3600; // 4 hours (SRS 4.2)
 
@@ -16,24 +18,29 @@ export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: str
       variants: { orderBy: { heightPx: 'desc' } },
     },
   });
-  if (!material || !material.fileKey || material.status !== 'published')
-    throw notFound('Material not available');
+  if (!material || !material.fileKey) throw notFound('Material not available');
   if (material.section.module.organizationId !== session.organizationId) throw notFound();
 
   if (session.role === 'STUDENT') {
-    // valid session + ACTIVE enrollment in a course containing this module + access not expired
+    if (material.status !== 'published') throw notFound('Material not available');
+    // ACTIVE or COMPLETED enrollment in a course containing this module + access not expired
     const enrollment = await prisma.enrollment.findFirst({
       where: {
-        learnerId: session.userId,
-        status: 'ACTIVE',
-        OR: [{ accessExpiry: null }, { accessExpiry: { gt: new Date() } }],
+        ...accessibleEnrollment(session.userId),
         course: { courseModules: { some: { moduleId: material.section.moduleId } } },
       },
       select: { id: true },
     });
-    if (!enrollment) throw forbidden('Not enrolled in this course');
+    if (!enrollment) throw forbidden('Your access to this course has ended or you are not enrolled');
+  } else if (session.role === 'INSTRUCTOR') {
+    // instructors preview lessons of the courses they teach
+    const mine = await taughtCourseIds(session.userId);
+    const inMine = await prisma.courseModule.count({
+      where: { moduleId: material.section.moduleId, courseId: { in: mine } },
+    });
+    if (!inMine) throw forbidden('You can only open lessons of courses you teach');
   }
-  // ADMIN/BRANCH_ADMIN/SUPER_ADMIN/INSTRUCTOR of same org pass through
+  // Admins of the same organisation can preview everything (incl. hidden lessons)
 
   // Optional quality selection: ?variantId= — falls back to the original upload
   const variantId = req.nextUrl.searchParams.get('variantId');

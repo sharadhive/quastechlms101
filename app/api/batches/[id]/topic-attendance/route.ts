@@ -1,9 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { withHandler, notFound } from '@/lib/utils/errors';
+import { withHandler, notFound, forbidden } from '@/lib/utils/errors';
 import { parseBody } from '@/lib/utils/validate';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
+import { can } from '@/lib/auth/permissions';
+import { LIVE_STATUSES } from '@/lib/auth/enrollment';
+
+const LOCK_HOURS = 48; // instructors can't change attendance after this, unless granted the override
 
 /**
  * GET /api/batches/:id/topic-attendance?sectionId=xxx
@@ -35,8 +39,9 @@ export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: str
   });
 
   // Get enrolled students
+  const showContacts = await can(session, 'view_contacts');
   const enrollments = await prisma.enrollment.findMany({
-    where: { batchId: batch.id, status: 'ACTIVE' },
+    where: { batchId: batch.id, status: { in: LIVE_STATUSES } },
     select: { learner: { select: { id: true, name: true, email: true } } },
     orderBy: { learner: { name: 'asc' } },
   });
@@ -52,6 +57,7 @@ export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: str
 
   const roster = enrollments.map((e) => ({
     ...e.learner,
+    email: showContacts ? e.learner.email : undefined,
     present: marks.get(e.learner.id) ?? null, // null = not yet marked
   }));
 
@@ -101,6 +107,13 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
     select: { sessionId: true },
   });
 
+  if (topicLink && session.role === 'INSTRUCTOR') {
+    const cls = await prisma.classSession.findUnique({ where: { id: topicLink.sessionId }, select: { scheduledAt: true } });
+    const locked = cls && cls.scheduledAt.getTime() + LOCK_HOURS * 3600_000 < Date.now();
+    if (locked && !(await can(session, 'attendance_override')))
+      throw forbidden(`Attendance is locked ${LOCK_HOURS}h after the class — ask an admin to change it`);
+  }
+
   if (!topicLink) {
     // Auto-create session + link (topic gets marked complete along with attendance)
     const sectionData = await prisma.section.findUnique({
@@ -124,7 +137,7 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
 
   // Only allow marking enrolled students
   const enrolled = await prisma.enrollment.findMany({
-    where: { batchId: batch.id, status: 'ACTIVE' },
+    where: { batchId: batch.id, status: { in: LIVE_STATUSES } },
     select: { learnerId: true },
   });
   const enrolledSet = new Set(enrolled.map((e) => e.learnerId));

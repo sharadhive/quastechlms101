@@ -32,6 +32,13 @@ export default function AdminDashboard() {
   const pendingSteps = steps.filter((s) => !s.done);
 
   return (<>
+    <div className="quick">
+      <Link href="/admin/courses"><span className="ic">📚</span><span>New course<small>Build lessons, quizzes, notes</small></span></Link>
+      <Link href="/admin/batches"><span className="ic">🎓</span><span>New batch<small>Assign instructor &amp; timing</small></span></Link>
+      <Link href="/admin/enroll"><span className="ic">➕</span><span>Enrol a learner<small>Course, batch &amp; fee in one go</small></span></Link>
+      <Link href="/admin/team"><span className="ic">🛡</span><span>Add instructor<small>Team, roles &amp; permissions</small></span></Link>
+      <Link href="/admin/recordings"><span className="ic">🎥</span><span>Class recordings<small>Upload &amp; approve</small></span></Link>
+    </div>
     {pendingSteps.length > 0 && (
       <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
         <h2>👋 Getting started — {steps.length - pendingSteps.length}/{steps.length} done</h2>

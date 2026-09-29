@@ -1,10 +1,12 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { verifyAccessToken, type SessionPayload } from './jwt';
+import type { Role } from '@prisma/client';
+import { verifyAccessToken, signAccessToken, type SessionPayload } from './jwt';
+import { issueRefreshToken } from './tokens';
 import { unauthorized } from '@/lib/utils/errors';
 
-export const ACCESS_COOKIE = 'qs_access';
-export const REFRESH_COOKIE = 'qs_refresh';
+import { ACCESS_COOKIE, REFRESH_COOKIE } from './cookies';
+export { ACCESS_COOKIE, REFRESH_COOKIE };
 
 export async function getSession(req: NextRequest): Promise<SessionPayload | null> {
   const token = req.cookies.get(ACCESS_COOKIE)?.value;
@@ -41,4 +43,24 @@ export function clearAuthCookies(res: NextResponse) {
   res.cookies.set(ACCESS_COOKIE, '', { ...base, maxAge: 0 });
   res.cookies.set(REFRESH_COOKIE, '', { ...base, maxAge: 0, path: '/' });
   return res;
+}
+
+/** Log a user in: new access + refresh token, cookies set, standard JSON body. */
+export async function startSession(
+  user: { id: string; role: Role; organizationId: string; branchId: string | null; name: string; mustChangePassword: boolean },
+  status = 200,
+) {
+  const access = await signAccessToken({
+    userId: user.id,
+    role: user.role,
+    organizationId: user.organizationId,
+    branchId: user.branchId,
+    mustChangePassword: user.mustChangePassword,
+  });
+  const refresh = await issueRefreshToken(user.id);
+  const res = NextResponse.json(
+    { role: user.role, name: user.name, mustChangePassword: user.mustChangePassword },
+    { status },
+  );
+  return setAuthCookies(res, access, refresh.raw, refresh.maxAgeSec);
 }

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withHandler, notFound } from '@/lib/utils/errors';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
+import { can } from '@/lib/auth/permissions';
 
 const LOW_THRESHOLD = 75;
 
@@ -19,9 +20,10 @@ export const GET = withHandler(async (req: NextRequest) => {
       ...(scope.branchId ? { branchId: scope.branchId } : {}),
     },
     include: {
-      sessions: { where: { scheduledAt: { lte: new Date() } }, select: { id: true } },
+      // only classes where attendance was actually taken count towards the %
+      sessions: { where: { scheduledAt: { lte: new Date() }, attendance: { some: {} } }, select: { id: true } },
       enrollments: {
-        where: { status: 'ACTIVE' },
+        where: { status: { in: ['ACTIVE', 'COMPLETED'] } },
         select: { learner: { select: { id: true, name: true, email: true } } },
       },
     },
@@ -37,10 +39,15 @@ export const GET = withHandler(async (req: NextRequest) => {
   for (const m of marks)
     if (m.present) presentCount.set(m.learnerId, (presentCount.get(m.learnerId) ?? 0) + 1);
 
+  const showContacts = await can(session, 'view_contacts');
   const report = batch.enrollments.map((e) => {
     const present = presentCount.get(e.learner.id) ?? 0;
     const pct = sessionIds.length ? Math.round((present / sessionIds.length) * 100) : null;
-    return { ...e.learner, present, totalSessions: sessionIds.length, pct, low: pct !== null && pct < LOW_THRESHOLD };
+    return {
+      ...e.learner,
+      email: showContacts ? e.learner.email : undefined,
+      present, totalSessions: sessionIds.length, pct, low: pct !== null && pct < LOW_THRESHOLD,
+    };
   });
 
   return NextResponse.json({ batchId, totalSessions: sessionIds.length, report });

@@ -2,11 +2,14 @@ import type { NextRequest } from 'next/server';
 import type { Role } from '@prisma/client';
 import { requireSession } from './session';
 import type { SessionPayload } from './jwt';
-import { forbidden } from '@/lib/utils/errors';
+import { ApiError, forbidden } from '@/lib/utils/errors';
 
 /** middleware order: verifyJwt → rbac(allowedRoles) → scope injector → handler */
 export async function requireRole(req: NextRequest, allowed: Role[]): Promise<SessionPayload> {
   const session = await requireSession(req);
+  // A temporary password must be replaced before anything else can be used
+  if (session.mustChangePassword)
+    throw new ApiError(403, 'Please set a new password first', 'MUST_CHANGE_PASSWORD');
   if (!allowed.includes(session.role)) throw forbidden();
   return session;
 }

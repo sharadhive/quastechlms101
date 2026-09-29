@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ROLE_HOME } from '@/lib/client/api';
+import { clearMe } from '@/lib/client/useMe';
 
 export default function Login() {
   const router = useRouter();
@@ -15,8 +16,12 @@ export default function Login() {
 
   const finish = (res: any) => {
     localStorage.setItem('qs_role', res.role);
-    localStorage.setItem('qs_name', res.name ?? '');
-    router.push(res.mustChangePassword ? '/change-password' : (ROLE_HOME[res.role] ?? '/'));
+    clearMe(); localStorage.setItem('qs_name', res.name ?? '');
+    // Return to the page the user originally opened (only inside their own panel)
+    const next = new URLSearchParams(window.location.search).get('next') ?? '';
+    const home = ROLE_HOME[res.role] ?? '/';
+    const target = next.startsWith(home + '/') || next === home ? next : home;
+    router.push(res.mustChangePassword ? '/change-password' : target);
   };
 
   const submit = async () => {
@@ -57,6 +62,9 @@ export default function Login() {
           <a href="#" onClick={(e) => { e.preventDefault(); setMode(mode === 'password' ? 'otp' : 'password'); setOtpSent(false); setErr(''); }}>
             {mode === 'password' ? 'Login with email OTP instead' : 'Login with password instead'}
           </a>
+        </p>
+        <p style={{ textAlign: 'center', marginTop: 4 }}>
+          <a href={`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ''}`}>Forgot password?</a>
         </p>
       </div>
     </div>

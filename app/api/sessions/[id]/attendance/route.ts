@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { withHandler, notFound, forbidden } from '@/lib/utils/errors';
 import { parseBody } from '@/lib/utils/validate';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
+import { can } from '@/lib/auth/permissions';
+import { LIVE_STATUSES } from '@/lib/auth/enrollment';
 
 const LOCK_HOURS = 48;
 
@@ -27,14 +29,15 @@ async function loadScopedSession(req: NextRequest, id: string) {
 
 /** GET → roster (enrolled learners + current marks) + session context */
 export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: string } }) => {
-  const { cls } = await loadScopedSession(req, ctx.params.id);
+  const { session, cls } = await loadScopedSession(req, ctx.params.id);
+  const showContacts = await can(session, 'view_contacts');
   const full = await prisma.classSession.findUnique({
     where: { id: cls.id },
     select: { scheduledAt: true, topicsCovered: { select: { sectionId: true } } },
   });
   const [enrollments, marks] = await Promise.all([
     prisma.enrollment.findMany({
-      where: { batchId: cls.batch.id, status: 'ACTIVE' },
+      where: { batchId: cls.batch.id, status: { in: LIVE_STATUSES } },
       select: { learner: { select: { id: true, name: true, email: true } } },
     }),
     prisma.attendance.findMany({ where: { sessionId: cls.id } }),
@@ -42,6 +45,7 @@ export const GET = withHandler(async (req: NextRequest, ctx: { params: { id: str
   const markMap = new Map(marks.map((m) => [m.learnerId, m.present]));
   const roster = enrollments.map((e) => ({
     ...e.learner,
+    email: showContacts ? e.learner.email : undefined,
     present: markMap.get(e.learner.id) ?? null,
   }));
   return NextResponse.json({
@@ -68,7 +72,7 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
 
   // only enrolled learners can be marked
   const enrolled = await prisma.enrollment.findMany({
-    where: { batchId: cls.batch.id, status: 'ACTIVE' },
+    where: { batchId: cls.batch.id, status: { in: LIVE_STATUSES } },
     select: { learnerId: true },
   });
   const enrolledSet = new Set(enrolled.map((e) => e.learnerId));

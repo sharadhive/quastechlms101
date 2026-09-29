@@ -50,17 +50,40 @@ export const GET = withHandler(
       select: { materialId: true, completedAt: true },
     });
 
-    // Strip quiz answer keys — only LINK materials keep their URL (SRS 12.7)
+    // My quiz / assignment status per lesson
     const course: any = enrollment.course;
+    const allIds: string[] = [];
+    for (const cm of course.courseModules) for (const sec of cm.module.sections) for (const m of sec.materials) allIds.push(m.id);
+    const subs = await prisma.submission.findMany({
+      where: { learnerId: session.userId, materialId: { in: allIds } },
+      select: { materialId: true, status: true, marks: true, attemptsUsed: true, isLate: true, feedback: true },
+    });
+    const subMap = new Map(subs.map((s) => [s.materialId, s]));
+
+    // Strip quiz answer keys (SRS 12.7) — expose only what the player needs per lesson type
     for (const cm of course.courseModules)
       for (const sec of cm.module.sections)
         sec.materials = sec.materials.map((m: any) => {
           const { quizSchema, ...rest } = m;
-          return m.type === 'LINK' ? { ...rest, externalUrl: quizSchema?.url ?? null } : rest;
+          const q = (quizSchema ?? {}) as any;
+          const sub = subMap.get(m.id);
+          const mine = sub
+            ? { status: sub.status, attemptsUsed: sub.attemptsUsed, isLate: sub.isLate,
+                marks: sub.status === 'PUBLISHED' ? sub.marks : null, feedback: sub.status === 'PUBLISHED' ? sub.feedback : null }
+            : null;
+          if (m.type === 'LINK' || m.type === 'LIVE') return { ...rest, externalUrl: q.url ?? null };
+          if (m.type === 'ASSIGNMENT')
+            return { ...rest, assignment: { instructions: q.instructions ?? null, dueAt: q.dueAt ?? null, maxMarks: q.maxMarks ?? null }, mine };
+          if (m.type === 'QUIZ')
+            return { ...rest, quizInfo: { questions: q.questions?.length ?? 0, timeLimitMin: q.timeLimitMin ?? null, attemptsAllowed: q.attemptsAllowed ?? 1 }, mine };
+          return rest;
         });
 
     return NextResponse.json({
-      enrollment: { id: enrollment.id, status: enrollment.status, progressPct: enrollment.progressPct },
+      enrollment: {
+        id: enrollment.id, status: enrollment.status, progressPct: enrollment.progressPct,
+        accessExpiry: enrollment.accessExpiry,
+      },
       course,
       completed: progress,
     });

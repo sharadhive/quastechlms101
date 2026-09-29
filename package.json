@@ -11,7 +11,9 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "typecheck": "tsc --noEmit",
-    "db:demo": "tsx prisma/seed-demo.ts"
+    "db:demo": "tsx prisma/seed-demo.ts",
+    "db:baseline-existing": "prisma db push --skip-generate && prisma db execute --file prisma/reset-migration-history.sql --schema prisma/schema.prisma && prisma migrate resolve --applied 20260928000000_baseline",
+    "check": "tsc --noEmit && next build"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// Always run at request time (never frozen into a static response at build time)
+export const dynamic = 'force-dynamic';
+
 const ORG_ID = process.env.NEXT_PUBLIC_ORG_ID ?? 'seed-org';
 
 /**

@@ -48,7 +48,7 @@ export const PATCH = withHandler(async (req: NextRequest, ctx: { params: { id: s
       where: { id: row.id },
       data: {
         name: body.name ?? row.name,
-        config, secrets: encryptJson(secrets),
+        config: config as any, secrets: encryptJson(secrets),
         ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
         version: { increment: 1 },
         ...(body.values ? { status: 'UNTESTED', lastError: null } : {}),

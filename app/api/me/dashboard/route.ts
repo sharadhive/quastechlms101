@@ -28,7 +28,7 @@ export const GET = withHandler(async (req: NextRequest) => {
     }),
     prisma.classSession.findMany({
       where: { scheduledAt: { gte: dayStart, lte: dayEnd },
-        batch: { enrollments: { some: { learnerId: session.userId, status: 'ACTIVE' } } } },
+        batch: { enrollments: { some: { learnerId: session.userId, status: { in: ['ACTIVE', 'COMPLETED'] } } } } },
       select: { id: true, title: true, scheduledAt: true, meetLink: true, startedAt: true,
         batch: { select: { name: true, course: { select: { title: true } } } } },
       orderBy: { scheduledAt: 'asc' },

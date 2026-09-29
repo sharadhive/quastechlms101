@@ -52,7 +52,8 @@ export const GET = withHandler(async (req: NextRequest) => {
       include: { learner: { select: { name: true, email: true } }, batch: { select: { id: true, name: true } } }, take: 6,
     });
     for (const e of learners)
-      hits.push({ type: 'Learner', label: e.learner.name, sub: `${e.batch.name} · ${e.learner.email}`, href: `/instructor/batches/${e.batch.id}`, icon: '🧑‍🎓' });
+      if (e.batch)
+        hits.push({ type: 'Learner', label: e.learner.name, sub: e.batch.name, href: `/instructor/batches/${e.batch.id}`, icon: '🧑‍🎓' });
     return NextResponse.json({ hits });
   }
 

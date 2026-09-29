@@ -53,10 +53,12 @@ export const POST = withHandler(async (req: NextRequest) => {
   });
   if (!course) throw notFound('Course not found');
   if (scope.branchId && data.branchId !== scope.branchId) throw notFound('Branch not found');
+  const branch = await prisma.branch.findFirst({ where: { id: data.branchId, organizationId: scope.organizationId } });
+  if (!branch) throw notFound('Branch not found');
 
   if (data.instructorId) {
     const instructor = await prisma.user.findFirst({
-      where: { id: data.instructorId, role: 'INSTRUCTOR', organizationId: scope.organizationId },
+      where: { id: data.instructorId, role: 'INSTRUCTOR', isActive: true, organizationId: scope.organizationId },
     });
     if (!instructor) throw notFound('Instructor not found');
   }
