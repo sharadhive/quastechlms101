@@ -69,6 +69,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=builder /app/.next            ./.next
 COPY --from=builder /app/node_modules     ./node_modules
 COPY --from=builder /app/package.json     ./package.json
+COPY --from=builder /app/public           ./public
+COPY --from=builder /app/ca.pem           ./ca.pem
 
 # Prisma schema + generated client (already inside node_modules, but schema
 # is needed for `prisma migrate deploy` in the entrypoint)
