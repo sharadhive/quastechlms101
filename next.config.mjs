@@ -8,5 +8,7 @@ const nextConfig = {
     // runs instrumentation.ts on server start → background jobs work without a separate worker
     instrumentationHook: true,
   },
+  // Force clean build ID to avoid stale cache issues
+  generateBuildId: async () => `build-${Date.now()}`,
 };
 export default nextConfig;
