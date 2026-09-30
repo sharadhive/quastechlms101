@@ -66,6 +66,9 @@ export default function Login() {
         <p style={{ textAlign: 'center', marginTop: 4 }}>
           <a href={`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ''}`}>Forgot password?</a>
         </p>
+        <p style={{ textAlign: 'center', marginTop: 14, fontSize: '.9rem' }}>
+          Don&apos;t have an account? <a href="/register" style={{ color: 'var(--brand)', fontWeight: 600 }}>Register</a>
+        </p>
       </div>
     </div>
     </div>
