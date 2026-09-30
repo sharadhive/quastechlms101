@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "build": "prisma generate && prisma migrate deploy && next build",
+    "start": "next start -p ${PORT:-3000}",
     "worker": "tsx worker.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
