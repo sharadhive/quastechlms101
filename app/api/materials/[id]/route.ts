@@ -51,6 +51,7 @@ export const DELETE = withHandler(async (req: NextRequest, ctx: { params: { id: 
 
   await prisma.material.delete({ where: { id: m.id } });
   await prisma.materialProgress.deleteMany({ where: { materialId: m.id } });
+  await prisma.videoWatch.deleteMany({ where: { materialId: m.id } });
   const storage = getStorage();
   for (const key of [m.fileKey, ...m.variants.map((v) => v.fileKey)])
     if (key) await storage.delete(key).catch(() => {}); // free disk space

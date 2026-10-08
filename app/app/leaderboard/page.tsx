@@ -11,6 +11,7 @@ export default function Leaderboard() {
   const [batches, setBatches] = useState<any[]>([]);
   const [batchId, setBatchId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false); // batches loaded
 
   // Load student's enrolled batches
   useEffect(() => {
@@ -30,21 +31,18 @@ export default function Leaderboard() {
       const list = [...batchMap.values()];
       setBatches(list);
       if (list.length > 0) setBatchId(list[0].id);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setReady(true));
     api('/api/me/badges').then((x) => setBadges(x.badges)).catch(() => {});
   }, []);
 
-  // Load leaderboard when batch changes
+  // Load leaderboard when batch changes — always the student's own batch, never everyone.
+  // (Without a batchId the server answers with the student's own batch, or only their own row.)
   useEffect(() => {
-    if (!batchId) {
-      // No batch — load org-wide as fallback
-      setLoading(true);
-      api('/api/leaderboard').then(setD).finally(() => setLoading(false));
-      return;
-    }
+    if (!ready) return;
     setLoading(true);
-    api(`/api/leaderboard?batchId=${batchId}`).then(setD).finally(() => setLoading(false));
-  }, [batchId]);
+    api(batchId ? `/api/leaderboard?batchId=${batchId}` : '/api/leaderboard')
+      .then(setD).catch(() => setD(null)).finally(() => setLoading(false));
+  }, [batchId, ready]);
 
   const selectedBatch = batches.find((b) => b.id === batchId);
 
@@ -64,7 +62,7 @@ export default function Leaderboard() {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
         <h2 style={{ margin: 0 }}>
-          🏆 Leaderboard {selectedBatch ? `— ${selectedBatch.name}` : '— top learners'}
+          🏆 Leaderboard {selectedBatch ? `— ${selectedBatch.name}` : '— my batch'}
         </h2>
         {batches.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -82,6 +80,9 @@ export default function Leaderboard() {
         )}
       </div>
 
+      {!loading && d?.noBatch && (
+        <p className="muted" style={{ marginTop: 0 }}>You are not in a batch yet. Once you are assigned to a batch, you will see your batch-mates here.</p>
+      )}
       {loading ? <SkelRows /> : (
         (!d || d.board.length === 0) ? (
           <Empty icon="🏁" text="Complete lessons and quizzes to earn points!" />

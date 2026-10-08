@@ -17,7 +17,7 @@ type LessonType = (typeof TYPES)[number]['key'];
 const HELP: Record<LessonType, string> = {
   VIDEO: 'Upload an MP4 (best), MOV, WebM or MKV. Large files are sent in small parts and resume automatically if the internet drops.',
   PDF: 'Upload notes, slides or a handout as PDF. Students read it inside the player.',
-  QUIZ: 'Multiple-choice questions, marked automatically. Tick every correct option.',
+  QUIZ: 'Multiple-choice questions, marked automatically. Tick every correct option — or upload all the questions at once from an Excel / CSV sheet.',
   ASSIGNMENT: 'Students upload a file (PDF, Word, zip, image…). You mark it in the Evaluation queue.',
   LINK: 'Any web page — documentation, GitHub repo, article, YouTube video.',
   LIVE: 'Zoom / Google Meet link for a live class inside this topic.',
@@ -127,7 +127,13 @@ export default function AddLesson({ sectionId, label, onAdded, onCancel }: {
         <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
       </>)}
 
-      {type === 'QUIZ' && <QuizBuilder value={quiz} onChange={setQuiz} />}
+      {type === 'QUIZ' && (
+        <QuizBuilder value={quiz} onChange={setQuiz}
+          onImported={({ title: sheetTitle, fileName }) => {
+            if (sheetTitle) setTitle(sheetTitle); // quiz_title from the sheet becomes the lesson title
+            else if (!title.trim()) setTitle(titleFromFile(fileName));
+          }} />
+      )}
 
       {type === 'ASSIGNMENT' && (<>
         <label>Instructions for students</label>

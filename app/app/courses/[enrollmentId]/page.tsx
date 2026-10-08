@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, uploadFile, ACCEPT } from '@/lib/client/api';
@@ -32,6 +32,13 @@ export default function Player() {
   const [autoNote, setAutoNote] = useState('');
   const [pdfExpanded, setPdfExpanded] = useState(false);
   const [downloadable, setDownloadable] = useState(false);
+
+  // ── Video watch tracking: a video completes by itself once 90% of it was really played ──
+  const [watch, setWatch] = useState<any>(null);       // latest watch state from the server
+  const watchedRef = useRef<Set<number>>(new Set());   // seconds played in this sitting
+  const lastTimeRef = useRef<number | null>(null);     // previous playback position
+  const lastSentRef = useRef(0);                       // when the last report was sent
+  const activeRef = useRef<any>(null);                 // current lesson, for async callbacks
 
   const load = () => api(`/api/me/courses/${enrollmentId}`).then((d) => { setData(d); return d; }).catch((e) => setLoadErr(e.message));
 
@@ -86,7 +93,70 @@ export default function Player() {
     api(`/api/notes?materialId=${m.id}`).then((d) => setNotes(d.notes)).catch(() => {});
   };
 
+  /** Seconds played → compact [start, end) ranges. */
+  const toRanges = (set: Set<number>): [number, number][] => {
+    const out: [number, number][] = [];
+    for (const sec of [...set].sort((a, b) => a - b)) {
+      const last = out[out.length - 1];
+      if (last && sec <= last[1]) last[1] = Math.max(last[1], sec + 1);
+      else out.push([sec, sec + 1]);
+    }
+    return out;
+  };
+
+  /** Report what was played. The server marks the video complete once 90% is covered. */
+  const sendWatch = async (materialId: string, v?: HTMLVideoElement | null) => {
+    lastSentRef.current = Date.now();
+    try {
+      const r = await api('/api/progress/watch', {
+        method: 'POST',
+        json: {
+          enrollmentId, materialId,
+          ranges: toRanges(watchedRef.current),
+          durationSec: v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : undefined,
+          positionSec: v ? v.currentTime : undefined,
+        },
+      });
+      if (r.justCompleted) await load(); // tick the lesson and refresh the progress bar
+      if (activeRef.current?.id !== materialId) return; // moved on to another lesson meanwhile
+      setWatch(r);
+      if (r.justCompleted)
+        setMsg(r.progress?.progressPct >= 100 ? '🎉 Course completed! Your certificate will appear under Certificates.' : 'Video completed ✓');
+    } catch { /* offline or busy — the next report carries everything again */ }
+  };
+
+  // Leaving the lesson view (Q&A / Notes tab): report what was played so far
+  useEffect(() => {
+    lastTimeRef.current = null;
+    const a = activeRef.current;
+    if (tab !== 'content' && a?.type === 'VIDEO' && watchedRef.current.size > 0) sendWatch(a.id);
+  }, [tab]);
+
+  // Closing the page or leaving the course: report once more so no watched time is lost
+  useEffect(() => {
+    const flush = () => {
+      const a = activeRef.current;
+      if (!a || a.type !== 'VIDEO' || watchedRef.current.size === 0) return;
+      fetch('/api/progress/watch', {
+        method: 'POST', keepalive: true, credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enrollmentId, materialId: a.id, ranges: toRanges(watchedRef.current) }),
+      }).catch(() => {});
+    };
+    window.addEventListener('pagehide', flush);
+    return () => { window.removeEventListener('pagehide', flush); flush(); };
+  }, [enrollmentId]);
+
   function select(m: any) {
+    // leaving a video: report what was played, then start clean for the next lesson
+    const leaving = activeRef.current;
+    if (leaving && leaving.id !== m.id) {
+      if (leaving.type === 'VIDEO' && watchedRef.current.size > 0) sendWatch(leaving.id);
+      watchedRef.current = new Set();
+      setWatch(null);
+    }
+    lastTimeRef.current = null;
+    activeRef.current = m;
     setActive(m); setStreamUrl(''); setQuiz(null); setQuizResult(null); setMsg(''); setErr(''); setTab('content');
     setAssignFile(undefined); setPdfExpanded(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -299,7 +369,11 @@ export default function Player() {
             controlsList="nodownload"
             style={{ width: '100%', borderRadius: 10, background: '#000', maxHeight: '70vh' }}
             onContextMenu={(e) => e.preventDefault()}
-            onEnded={() => markDone()}
+            onPlay={(e) => { lastTimeRef.current = e.currentTarget.currentTime; }}
+            onSeeking={() => { lastTimeRef.current = null; }}
+            onSeeked={(e) => { lastTimeRef.current = e.currentTarget.currentTime; }}
+            onPause={(e) => sendWatch(cur.id, e.currentTarget)}
+            onEnded={(e) => sendWatch(cur.id, e.currentTarget)}
             onWaiting={onStall}
             onLoadedMetadata={(e) => {
               const v = e.currentTarget;
@@ -307,9 +381,20 @@ export default function Player() {
               let saved = 0;
               try { saved = Number(localStorage.getItem(`pos:${cur.id}`) ?? 0); } catch { /* storage blocked */ }
               if (saved > 5 && saved < v.duration - 10) v.currentTime = saved;
+              lastTimeRef.current = null;
+              sendWatch(cur.id, v); // load how much of this video was already watched
             }}
             onTimeUpdate={(e) => {
               const v = e.currentTarget;
+              // Count only the seconds that are really played — jumping ahead with the seek bar adds nothing
+              const last = lastTimeRef.current;
+              if (last !== null && !v.seeking && !v.paused) {
+                const dt = v.currentTime - last;
+                if (dt > 0 && dt <= 1 + 1.5 * v.playbackRate)
+                  for (let sec = Math.floor(last); sec < Math.floor(v.currentTime); sec++) watchedRef.current.add(sec);
+              }
+              lastTimeRef.current = v.seeking ? null : v.currentTime;
+              if (watchedRef.current.size > 0 && Date.now() - lastSentRef.current > 15000) sendWatch(cur.id, v);
               if (Math.floor(v.currentTime) % 5 === 0) {
                 try { localStorage.setItem(`pos:${cur.id}`, String(Math.floor(v.currentTime))); } catch { /* ignore */ }
               }
@@ -327,10 +412,14 @@ export default function Player() {
             <select value={speed} onChange={(e) => { const sp = Number(e.target.value); setSpeed(sp); if (videoRef) videoRef.playbackRate = sp; }}>
               {[0.75, 1, 1.25, 1.5, 1.75, 2].map((sp) => <option key={sp} value={sp}>{sp}×</option>)}
             </select>
-            <span className="muted">▸ Resumes where you left off · marked complete when the video ends</span>
+            <span className="muted">▸ Resumes where you left off · marked complete automatically once you have watched 90%</span>
           </div>
           {autoNote && <div className="ok">{autoNote}</div>}
-          {!doneSet.has(cur.id) && <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => markDone()}>Mark as complete</button>}
+          {!doneSet.has(cur.id) && watch && watch.durationSec > 0 && (
+            <div className="muted" style={{ marginTop: 8, fontSize: '.82rem' }}>
+              Watched {watch.watchedPct}% of this video · it completes at 90% · skipping ahead does not count
+            </div>
+          )}
         </>)}
 
         {/* ── PDF ── */}

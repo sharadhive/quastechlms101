@@ -1,4 +1,6 @@
 'use client';
+import { useRef, useState } from 'react';
+import { readQuizFile, downloadQuizTemplate, QUIZ_IMPORT_ACCEPT, type QuizImportResult } from '@/lib/client/quizImport';
 
 export interface QQ { text: string; options: string[]; correct: number[]; marks: number; negative: number; }
 export const newQ = (): QQ => ({ text: '', options: ['', ''], correct: [], marks: 1, negative: 0 });
@@ -34,13 +36,151 @@ export function toQuizSchema(q: any) {
   };
 }
 
-export default function QuizBuilder({ value, onChange }: { value: any; onChange: (v: any) => void }) {
+const hasContent = (x: QQ) => !!(x.text.trim() || x.options.some((o) => o.trim()));
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+interface ImportState {
+  busy?: boolean;
+  fileName?: string;
+  errors?: string[];
+  warnings?: string[];
+  ok?: string;
+  details?: string;
+  pending?: QuizImportResult; // waiting for "replace" / "add after"
+  existing?: number;
+}
+
+export default function QuizBuilder({ value, onChange, onImported }: {
+  value: any;
+  onChange: (v: any) => void;
+  /** called after an Excel/CSV import — `title` is the sheet's quiz_title (if it had one) */
+  onImported?: (info: { title?: string; fileName: string }) => void;
+}) {
   const q = value ?? defaultQuiz();
   const set = (patch: any) => onChange({ ...q, ...patch });
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [imp, setImp] = useState<ImportState>({});
+  const [drag, setDrag] = useState(false);
+  // file reading is async — always apply to the latest quiz, not the one from when the file was picked
+  const latest = useRef({ q, onChange, onImported });
+  latest.current = { q, onChange, onImported };
+
+  const apply = (res: QuizImportResult, mode: 'replace' | 'append', fileName: string) => {
+    const { q: cur, onChange: change, onImported: imported } = latest.current;
+    const kept: QQ[] = mode === 'append' ? cur.questions.filter(hasContent) : [];
+    const s = res.settings;
+    change({
+      ...cur,
+      ...(s.timeLimitMin !== undefined ? { timeLimitMin: s.timeLimitMin } : {}),
+      ...(s.attemptsAllowed !== undefined ? { attemptsAllowed: s.attemptsAllowed } : {}),
+      ...(s.showAnswers !== undefined ? { showAnswers: s.showAnswers } : {}),
+      questions: [...kept, ...res.questions],
+    });
+    imported?.({ title: s.title, fileName });
+
+    const n = res.questions.length;
+    const marks = round2(res.questions.reduce((t, x) => t + x.marks, 0));
+    const info = [
+      s.title && `title “${s.title}”`,
+      s.timeLimitMin !== undefined && (s.timeLimitMin ? `${s.timeLimitMin} min time limit` : 'no time limit'),
+      s.attemptsAllowed !== undefined && `${s.attemptsAllowed} attempt${s.attemptsAllowed === 1 ? '' : 's'}`,
+      s.showAnswers !== undefined && (s.showAnswers ? 'answers shown after submit' : 'answers hidden after submit'),
+    ].filter(Boolean).join(' · ');
+    // adding the same sheet twice by mistake → point out the repeats
+    const already = new Set(kept.map((x) => x.text.trim().toLowerCase()));
+    const repeats = res.questions
+      .map((x, i) => (already.has(x.text.trim().toLowerCase()) ? `Q${kept.length + i + 1} “${x.text}” is already in this quiz.` : ''))
+      .filter(Boolean);
+    setImp({
+      fileName,
+      ok: `✓ ${mode === 'append' ? `Added ${n} more` : `Imported ${n}`} question${n === 1 ? '' : 's'} (${marks} marks) from ${fileName}` +
+        (mode === 'append' ? ` — ${kept.length + n} questions in total.` : '.'),
+      details: info ? `Settings from the file: ${info}.` : undefined,
+      warnings: [...repeats, ...res.warnings],
+    });
+  };
+
+  const importFile = async (file: File) => {
+    setImp({ busy: true, fileName: file.name });
+    try {
+      const res = await readQuizFile(file);
+      if (res.errors.length) { setImp({ fileName: file.name, errors: res.errors }); return; }
+      const existing = latest.current.q.questions.filter(hasContent).length;
+      if (existing) setImp({ fileName: file.name, pending: res, existing });
+      else apply(res, 'replace', file.name);
+    } catch (e: any) {
+      setImp({ fileName: file.name, errors: [e?.message || 'Could not read this file.'] });
+    }
+  };
+
+  const importBox = (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f && !imp.busy) importFile(f); }}
+      style={{ border: `1.5px dashed ${drag ? 'var(--brand)' : 'var(--border-strong)'}`, background: drag ? 'var(--brand-50)' : '#fff', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}
+    >
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 240px', fontSize: '.84rem' }}>
+          <b>📥 Add all questions from Excel</b>
+          <div className="muted" style={{ fontSize: '.78rem' }}>
+            Download the sample, write one question per row with its options, put the correct letter (A, or A,C for more than one) and marks — then upload it here or drop the file on this box.
+          </div>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => downloadQuizTemplate('xlsx')}>⬇ Sample Excel</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => downloadQuizTemplate('csv')}>⬇ Sample CSV</button>
+        <button type="button" className="btn btn-sm" disabled={imp.busy} onClick={() => fileRef.current?.click()}>
+          {imp.busy ? 'Reading file…' : '⬆ Upload Excel / CSV'}
+        </button>
+        <input ref={fileRef} type="file" accept={QUIZ_IMPORT_ACCEPT} style={{ display: 'none' }}
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
+      </div>
+
+      {imp.errors && (
+        <div className="hint warn" style={{ margin: '10px 0 0' }}>
+          <b>Nothing was imported from {imp.fileName}.</b> Fix {imp.errors.length === 1 ? 'this' : `these ${imp.errors.length} problems`} in the file, save it and upload again:
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            {imp.errors.slice(0, 15).map((e, i) => <li key={i}>{e}</li>)}
+          </ul>
+          {imp.errors.length > 15 && <div style={{ marginTop: 4 }}>…and {imp.errors.length - 15} more.</div>}
+        </div>
+      )}
+
+      {imp.pending && (
+        <div className="hint" style={{ margin: '10px 0 0' }}>
+          Found <b>{imp.pending.questions.length} question{imp.pending.questions.length === 1 ? '' : 's'}</b> in {imp.fileName}.
+          You already have {imp.existing} question{imp.existing === 1 ? '' : 's'} below — what should happen to {imp.existing === 1 ? 'it' : 'them'}?
+          <div className="actions" style={{ marginTop: 8 }}>
+            <button type="button" className="btn btn-sm" onClick={() => apply(imp.pending!, 'replace', imp.fileName!)}>Replace with the file</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => apply(imp.pending!, 'append', imp.fileName!)}>Keep them and add the file’s questions after</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImp({})}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {imp.ok && (
+        <div className="ok" style={{ margin: '10px 0 0' }}>
+          {imp.ok} Check them below, then save the lesson.
+          {imp.details && <div className="muted" style={{ marginTop: 2 }}>{imp.details}</div>}
+        </div>
+      )}
+      {!!imp.warnings?.length && (
+        <div className="hint warn" style={{ margin: '8px 0 0' }}>
+          Imported, but please double-check:
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            {imp.warnings.slice(0, 10).map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+          {imp.warnings.length > 10 && <div style={{ marginTop: 4 }}>…and {imp.warnings.length - 10} more.</div>}
+        </div>
+      )}
+    </div>
+  );
+
   const setQ = (i: number, patch: Partial<QQ>) =>
     set({ questions: q.questions.map((x: QQ, xi: number) => (xi === i ? { ...x, ...patch } : x)) });
   return (
     <div className="panel-inline">
+      {importBox}
       <div className="row">
         <div><label>Time limit (minutes, 0 = none)</label><input type="number" min={0} value={q.timeLimitMin} onChange={(e) => set({ timeLimitMin: Number(e.target.value) })} /></div>
         <div><label>Attempts allowed</label><input type="number" min={1} value={q.attemptsAllowed} onChange={(e) => set({ attemptsAllowed: Number(e.target.value) })} /></div>

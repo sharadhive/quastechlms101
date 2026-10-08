@@ -478,6 +478,22 @@ model MaterialProgress {
   @@index([materialId])
 }
 
+/// How much of a video lesson a learner has really played. Once 90% is covered the lesson
+/// is completed automatically (a MaterialProgress row is created) — see /api/progress/watch.
+model VideoWatch {
+  enrollmentId String
+  materialId   String
+  ranges       Json // [[startSec, endSec], …] — the parts that were played (seeking does not count)
+  watchedSec   Int      @default(0)
+  durationSec  Int      @default(0)
+  positionSec  Int      @default(0)
+  startedAt    DateTime @default(now())
+  lastPingAt   DateTime @default(now())
+
+  @@id([enrollmentId, materialId])
+  @@index([materialId])
+}
+
 // ─── Recordings (SRS 3.7) ───────────────────────────────────────────
 model Recording {
   id           String   @id @default(uuid())
