@@ -47,7 +47,7 @@ export function withHandler<Ctx = unknown>(fn: Handler<Ctx>): Handler<Ctx> {
         );
       if (err?.code === 'P2025')
         return NextResponse.json({ error: 'Record not found' }, { status: 404 });
-      console.error('[api]', err);
+      console.error(`[api] ${req.method} ${req.nextUrl.pathname}`, err?.message ?? err, err?.stack ?? '');
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
   };

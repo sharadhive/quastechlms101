@@ -12,6 +12,7 @@ export default function Enroll() {
   const [result, setResult] = useState<any>(null); const [err, setErr] = useState('');
   const [converting, setConverting] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => { api('/api/courses?status=PUBLISHED').then((d) => setCourses(d.courses)); }, []);
   // Opened from a learner profile → learner already chosen
@@ -54,7 +55,9 @@ export default function Enroll() {
   };
 
   const submit = async () => {
+    if (submitting) return;
     setErr('');
+    setSubmitting(true);
     try {
       const d = await api('/api/enrollments/manual', {
         method: 'POST',
@@ -67,7 +70,7 @@ export default function Enroll() {
         },
       });
       setResult(d);
-    } catch (e: any) { setErr(e.message); }
+    } catch (e: any) { setErr(e.message); } finally { setSubmitting(false); }
   };
 
   if (result) return (
@@ -76,7 +79,7 @@ export default function Enroll() {
       <p>Pending amount: <b>₹{result.pendingAmount}</b>{result.receiptNo && <> · Receipt: <b>{result.receiptNo}</b></>}</p>
       <p className="muted">Enrolment email queued — the course is live in the student panel immediately.</p>
       {learner && <p><a href={`/admin/learners/${learner.id}`}>Open {learner.name}’s profile →</a></p>}
-      <button className="btn" onClick={() => { setResult(null); setLearner(null); setQ(''); setFound([]); setEnquiries([]); setSearched(false); setCourseId(''); setBatchId(''); setFee({ totalFee: '', discount: '0', amount: '', mode: 'CASH', referenceNo: '' }); }}>Enroll another</button>
+      <button className="btn" onClick={() => { setResult(null); setLearner(null); setQ(''); setFound([]); setEnquiries([]); setSearched(false); setCourseId(''); setBatchId(''); setFee({ totalFee: '', discount: '0', amount: '', mode: 'CASH', referenceNo: '' }); setErr(''); setSubmitting(false); }}>Enroll another</button>
     </div>
   );
 
@@ -150,7 +153,7 @@ export default function Enroll() {
         <div><label>Reference no.</label><input value={fee.referenceNo} onChange={(e) => setFee({ ...fee, referenceNo: e.target.value })} /></div>
       </div>
       {err && <div className="err">{err}</div>}
-      <button className="btn" onClick={submit} disabled={!learner || !batchId || !fee.totalFee}>Enroll & record fee</button>
+      <button className="btn" onClick={submit} disabled={!learner || !batchId || !fee.totalFee || submitting}>{submitting ? 'Enrolling…' : 'Enroll & record fee'}</button>
     </div>
   </>);
 }

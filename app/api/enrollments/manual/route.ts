@@ -137,33 +137,40 @@ export const POST = withHandler(async (req: NextRequest) => {
     });
   } catch (err: any) {
     if (err?.code === 'P2002') throw conflict('This learner is already enrolled in this course');
+    console.error('[enroll/manual] transaction failed:', err);
     throw err;
   }
 
-  // Installment due reminders: dueDate - 3 days (SRS 3.8 / 12.10)
-  if (fee.installments?.length) {
-    for (const inst of fee.installments) {
-      const runAt = new Date(new Date(inst.dueDate).getTime() - 3 * 86400_000);
-      if (runAt > new Date())
-        await enqueue(
-          'EMAIL_FEE_REMINDER',
-          { to: learner.email, name: learner.name, pendingAmount: inst.amount, dueDate: inst.dueDate },
-          runAt,
-        );
+  // Post-commit jobs — must never cause a 500 after the enrollment already succeeded
+  try {
+    // Installment due reminders: dueDate - 3 days (SRS 3.8 / 12.10)
+    if (fee.installments?.length) {
+      for (const inst of fee.installments) {
+        const runAt = new Date(new Date(inst.dueDate).getTime() - 3 * 86400_000);
+        if (runAt > new Date())
+          await enqueue(
+            'EMAIL_FEE_REMINDER',
+            { to: learner.email, name: learner.name, pendingAmount: inst.amount, dueDate: inst.dueDate },
+            runAt,
+          );
+      }
     }
+
+    // After commit: enrolment email via job queue (SRS 12.3). Login details were sent when the
+    // account was created; this mail links to the login + "forgot password" pages.
+    await enqueue('EMAIL_ENROLLED', {
+      to: learner.email,
+      name: learner.name,
+      courseTitle: batch.course.title,
+      batchName: batch.name,
+    });
+
+    if (result.payment)
+      await enqueue('RENDER_RECEIPT_PDF', { paymentId: result.payment.id });
+  } catch (jobErr: any) {
+    // Enrollment succeeded — log the job-queue failure but don't let it crash the response
+    console.error('[enroll/manual] post-commit job enqueue failed (enrollment still valid):', jobErr?.message ?? jobErr);
   }
-
-  // After commit: enrolment email via job queue (SRS 12.3). Login details were sent when the
-  // account was created; this mail links to the login + "forgot password" pages.
-  await enqueue('EMAIL_ENROLLED', {
-    to: learner.email,
-    name: learner.name,
-    courseTitle: batch.course.title,
-    batchName: batch.name,
-  });
-
-  if (result.payment)
-    await enqueue('RENDER_RECEIPT_PDF', { paymentId: result.payment.id });
 
   return NextResponse.json(
     {
