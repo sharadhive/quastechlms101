@@ -7,6 +7,7 @@ import { requireRole, ADMIN_ROLES } from '@/lib/auth/rbac';
 import { assertCanEditContent } from '@/lib/auth/content';
 import { getStorage } from '@/lib/adapters/storage';
 import { keyBelongsTo, extOf } from '@/lib/utils/files';
+import { enqueue } from '@/lib/jobs/queue';
 
 const schema = z.object({
   type: z.enum(['VIDEO', 'PDF', 'QUIZ', 'ASSIGNMENT', 'LINK', 'LIVE']),
@@ -71,6 +72,10 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
   const position =
     data.position ?? (await prisma.material.count({ where: { sectionId } }));
 
+  // Videos start as 'processing' and become 'published' after FFmpeg conversion.
+  // PDFs and everything else publish immediately.
+  const isVideo = data.type === 'VIDEO' && data.fileKey;
+
   const material = await prisma.material.create({
     data: {
       sectionId,
@@ -82,10 +87,18 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
       durationSec: data.durationSec,
       isDownloadable: data.isDownloadable ?? false,
       quizSchema: meta,
-      // v1: files are verified in storage above, so lessons go live immediately
-      status: 'published',
+      status: isVideo ? 'processing' : 'published',
     },
   });
+
+  // Enqueue FFmpeg transcode job for video uploads
+  if (isVideo) {
+    await enqueue('VIDEO_TRANSCODE', {
+      materialId: material.id,
+      organizationId: session.organizationId,
+      fileKey: data.fileKey!,
+    });
+  }
 
   return NextResponse.json(
     { material: { ...material, sizeBytes: material.sizeBytes?.toString() ?? null } },

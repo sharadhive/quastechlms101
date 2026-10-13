@@ -66,6 +66,11 @@ export const PATCH = withHandler(async (req: NextRequest, ctx: { params: { id: s
   });
 
   invalidateIntegrationCache(row.provider);
+  // Reset the S3 client cache when cloud storage credentials change
+  if (row.provider === 'STORAGE_S3') {
+    const { resetS3Client } = await import('@/lib/adapters/storage/s3');
+    resetS3Client();
+  }
   await prisma.$transaction((tx) =>
     audit(tx, {
       organizationId: session.organizationId, actorId: session.userId,

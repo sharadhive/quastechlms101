@@ -3,15 +3,19 @@
 /**
  * Single-flight refresh: when a page fires several requests at once and they all get a
  * 401, only ONE /api/auth/refresh runs — the others wait for it, then retry.
- * Without this, parallel refreshes look like token replay and log the user out.
+ *
+ * 'expired' = the login really ended (logged out, password changed, account disabled) → sign in again.
+ * 'offline' = no internet / server restarting during a deploy → keep the user signed in and just
+ *             report the error; the next action retries. (Before, this logged people out.)
  */
-let refreshing: Promise<boolean> | null = null;
+type RefreshResult = 'ok' | 'expired' | 'offline';
+let refreshing: Promise<RefreshResult> | null = null;
 
-function refreshOnce(): Promise<boolean> {
+function refreshOnce(): Promise<RefreshResult> {
   if (!refreshing) {
     refreshing = fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' })
-      .then((r) => r.ok)
-      .catch(() => false)
+      .then((r): RefreshResult => (r.ok ? 'ok' : r.status === 401 || r.status === 403 ? 'expired' : 'offline'))
+      .catch((): RefreshResult => 'offline')
       .finally(() => {
         setTimeout(() => {
           refreshing = null;
@@ -19,6 +23,15 @@ function refreshOnce(): Promise<boolean> {
       });
   }
   return refreshing;
+}
+
+/** Sign-in endpoints answer 401 for a wrong password etc. — never treat that as an expired login. */
+const NO_REFRESH = /^\/api\/auth\/(login|logout|refresh|otp|register|password)/;
+
+/** Send the user to sign in, then bring them back to the page they were on. */
+function goToLogin() {
+  const here = window.location.pathname + window.location.search;
+  window.location.href = `/login?expired=1&next=${encodeURIComponent(here)}`;
 }
 
 /** JSON fetch with automatic silent refresh on 401 (SRS 12.1). */
@@ -29,15 +42,22 @@ export async function api<T = any>(path: string, init?: RequestInit & { json?: u
     body: init?.json !== undefined ? JSON.stringify(init.json) : init?.body,
     credentials: 'same-origin',
   };
-  let res = await fetch(path, opts);
+  let res: Response;
+  try {
+    res = await fetch(path, opts);
+  } catch {
+    throw new Error('Could not reach the server — check your internet connection and try again.');
+  }
 
-  if (res.status === 401 && !path.startsWith('/api/auth/')) {
-    const ok = await refreshOnce();
-    if (ok) {
+  if (res.status === 401 && !NO_REFRESH.test(path)) {
+    const r = await refreshOnce();
+    if (r === 'ok') {
       res = await fetch(path, opts); // retry with the fresh cookie
+    } else if (r === 'expired') {
+      goToLogin();
+      throw new Error('Session expired — please sign in again');
     } else {
-      window.location.href = '/login';
-      throw new Error('Session expired');
+      throw new Error('Could not reach the server — check your internet connection and try again.');
     }
   }
 
@@ -46,7 +66,13 @@ export async function api<T = any>(path: string, init?: RequestInit & { json?: u
     window.location.href = '/change-password';
     throw new Error('Please set a new password first');
   }
-  if (!res.ok) throw new Error((data as any).error ?? `Request failed (${res.status})`);
+  if (!res.ok) {
+    // status + code let screens react to specific answers, e.g. code 'SCHEDULE_CONFLICT' → "move anyway?"
+    throw Object.assign(new Error((data as any).error ?? `Request failed (${res.status})`), {
+      status: res.status,
+      code: (data as any).code as string | undefined,
+    });
+  }
   return data as T;
 }
 

@@ -6,7 +6,9 @@ import { parseBody } from '@/lib/utils/validate';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
 import { can } from '@/lib/auth/permissions';
 import { getStorage } from '@/lib/adapters/storage';
-import { keyBelongsTo } from '@/lib/utils/files';
+import { keyBelongsTo, extOf } from '@/lib/utils/files';
+import { writeWebmDuration } from '@/lib/utils/webm';
+import { enqueue } from '@/lib/jobs/queue';
 
 const createSchema = z.object({
   batchId: z.string().min(1),
@@ -14,6 +16,9 @@ const createSchema = z.object({
   title: z.string().min(1),
   fileKey: z.string().min(5),
   sizeBytes: z.number().optional(),
+  /** from the in-browser class recorder: real length + where its Duration placeholder sits */
+  durationMs: z.number().positive().max(24 * 3600_000).optional(),
+  durationOffset: z.number().int().min(3).max(65536).optional(),
 });
 
 export const POST = withHandler(async (req: NextRequest) => {
@@ -32,9 +37,20 @@ export const POST = withHandler(async (req: NextRequest) => {
   if (!batch) throw notFound('Batch not found');
   if (!keyBelongsTo(scope.organizationId, data.fileKey, ['recording', 'material'])) throw badRequest('Invalid file');
   if (!(await getStorage().exists(data.fileKey))) throw badRequest('fileKey not found in storage');
+  if (data.sessionId) {
+    const cls = await prisma.classSession.findFirst({ where: { id: data.sessionId, batchId: batch.id }, select: { id: true } });
+    if (!cls) throw badRequest('That class does not belong to this batch');
+  }
+  // Browser recording → write its real length so students can jump around in the video
+  if (data.durationMs && data.durationOffset)
+    await writeWebmDuration(data.fileKey, data.durationOffset, data.durationMs).catch(() => false);
 
   // Instructor uploads wait for admin approval unless they were granted "Publish recordings directly"
   const needsApproval = session.role === 'INSTRUCTOR' && !(await can(session, 'publish_recordings'));
+
+  // Check if file needs FFmpeg transcoding (non-MP4 formats like WebM from browser recorder)
+  const ext = extOf(data.fileKey) ?? '';
+  const needsTranscode = !['mp4', 'm4v'].includes(ext);
 
   const recording = await prisma.recording.create({
     data: {
@@ -44,9 +60,20 @@ export const POST = withHandler(async (req: NextRequest) => {
       fileKey: data.fileKey,
       sizeBytes: data.sizeBytes ? BigInt(Math.round(data.sizeBytes)) : null,
       uploadedById: session.userId,
-      status: needsApproval ? 'pending_approval' : 'published',
+      status: needsTranscode ? 'processing' : (needsApproval ? 'pending_approval' : 'published'),
     },
   });
+
+  // Enqueue FFmpeg transcode job for non-MP4 recordings (WebM from browser, MKV, etc.)
+  if (needsTranscode) {
+    await enqueue('VIDEO_TRANSCODE_RECORDING', {
+      recordingId: recording.id,
+      organizationId: scope.organizationId,
+      fileKey: data.fileKey,
+      finalStatus: needsApproval ? 'pending_approval' : 'published',
+    });
+  }
+
   return NextResponse.json(
     { recording: { ...recording, sizeBytes: recording.sizeBytes?.toString() ?? null } },
     { status: 201 },

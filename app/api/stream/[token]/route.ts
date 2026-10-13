@@ -10,9 +10,13 @@ export const dynamic = 'force-dynamic';
 /**
  * Streams stored files with HTTP Range support.
  *
- * Memory-safe for very large videos: data is piped from disk in small pieces and an
- * open-ended request ("bytes=0-", which every <video> sends first) is answered with at
- * most MAX_OPEN_CHUNK bytes — the browser simply asks for the next piece as it plays.
+ * Two modes:
+ *  - LOCAL: data is piped from disk in small pieces (memory-safe for very large videos).
+ *  - S3/R2: the token carries a `redirect` URL → the browser is sent there directly,
+ *    so the server never touches the video bytes at all.
+ *
+ * For local mode, an open-ended request ("bytes=0-", which every <video> sends first) is
+ * answered with at most MAX_OPEN_CHUNK bytes — the browser simply asks for the next piece.
  */
 const MAX_OPEN_CHUNK = 2 * 1024 * 1024; // 2 MB for "bytes=N-"
 const MAX_EXPLICIT_CHUNK = 16 * 1024 * 1024; // cap for "bytes=N-M"
@@ -35,9 +39,15 @@ function body(filePath: string, start: number, end: number) {
 }
 
 async function handle(req: NextRequest, token: string, headOnly: boolean) {
-  const p = verifyPayload<{ key: string; op: string }>(token);
+  const p = verifyPayload<{ key: string; op: string; redirect?: string }>(token);
   if (!p || p.op !== 'get' || typeof p.key !== 'string') return new Response('Link expired', { status: 403 });
 
+  // S3/R2 mode: redirect to the presigned cloud URL (no server bandwidth used)
+  if (p.redirect) {
+    return Response.redirect(p.redirect, 302);
+  }
+
+  // Local mode: stream from disk
   let filePath: string;
   try {
     filePath = localPath(p.key);
@@ -94,3 +104,4 @@ export async function GET(req: NextRequest, ctx: { params: { token: string } }) 
 export async function HEAD(req: NextRequest, ctx: { params: { token: string } }) {
   return handle(req, ctx.params.token, true);
 }
+

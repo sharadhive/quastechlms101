@@ -97,6 +97,30 @@ export async function runJob(type: JobType, payload: Record<string, unknown>): P
       return;
     }
 
+    case 'EMAIL_SESSION_CHANGED': {
+      // One job per person, so a mail error never re-sends to people who already got it
+      const { to, name, kind, title, courseTitle, batchName, oldAt, newAt, meetLink, reason } = payload as any;
+      const what = `${courseTitle} — ${title}${batchName ? ` (${batchName})` : ''}`;
+      const lines =
+        kind === 'cancelled'
+          ? [`The class below has been cancelled.`, what, `Was scheduled: ${fmtDateTime(new Date(oldAt))}`]
+          : kind === 'rescheduled'
+            ? [`The class below has a new time.`, what, `New time: ${fmtDateTime(new Date(newAt))}`, `(was ${fmtDateTime(new Date(oldAt))})`]
+            : [`The meeting link for the class below has changed.`, what, `Time: ${fmtDateTime(new Date(newAt ?? oldAt))}`];
+      if (reason) lines.push(`Reason: ${reason}`);
+      if (kind !== 'cancelled' && meetLink) lines.push(`Join: ${meetLink}`);
+      await mailer.send({
+        to,
+        subject:
+          kind === 'cancelled' ? `Class cancelled: ${title}`
+            : kind === 'rescheduled' ? `Class rescheduled: ${title} — now ${fmtDateTime(new Date(newAt))}`
+              : `New meeting link: ${title}`,
+        body: `Hi ${name},\n${lines.join('\n')}`,
+        meta: { type },
+      });
+      return;
+    }
+
     case 'EMAIL_RESULT_PUBLISHED': {
       const { learnerId, materialTitle } = payload as any;
       const learner = await prisma.user.findUnique({ where: { id: learnerId } });
@@ -235,6 +259,18 @@ export async function runJob(type: JobType, payload: Record<string, unknown>): P
       const pdf = await done;
       const key = `org/${e.course.organizationId}/receipts/${payment.id}.pdf`;
       await getStorage().put(key, pdf, 'application/pdf');
+      return;
+    }
+
+    case 'VIDEO_TRANSCODE': {
+      const { processVideoTranscode } = await import('./transcode');
+      await processVideoTranscode(payload as any);
+      return;
+    }
+
+    case 'VIDEO_TRANSCODE_RECORDING': {
+      const { processRecordingTranscode } = await import('./transcode');
+      await processRecordingTranscode(payload as any);
       return;
     }
 

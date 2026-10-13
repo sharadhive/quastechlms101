@@ -22,7 +22,7 @@ export const POST = withHandler(async (req: NextRequest) => {
   if (!user || !user.isActive) throw unauthorized();
 
   const ok = await bcrypt.compare(currentPassword, user.passwordHash);
-  if (!ok) throw unauthorized('Current password is incorrect');
+  if (!ok) throw badRequest('Current password is incorrect'); // 400, not 401: a wrong password is not an expired login
 
   const updated = await prisma.user.update({
     where: { id: user.id },

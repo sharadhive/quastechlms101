@@ -39,6 +39,7 @@ export default function Player() {
   const lastTimeRef = useRef<number | null>(null);     // previous playback position
   const lastSentRef = useRef(0);                       // when the last report was sent
   const activeRef = useRef<any>(null);                 // current lesson, for async callbacks
+  const renewedAtRef = useRef(0);                      // when the video link was last renewed
 
   const load = () => api(`/api/me/courses/${enrollmentId}`).then((d) => { setData(d); return d; }).catch((e) => setLoadErr(e.message));
 
@@ -196,6 +197,16 @@ export default function Player() {
   };
 
   /** Repeated buffering → step down one quality level automatically. */
+  /**
+   * The signed video link is valid for 4 hours. If a lesson stays open longer (or the link fails once),
+   * quietly fetch a fresh link and continue from the same second instead of showing a broken player.
+   */
+  const onVideoError = (materialId: string) => {
+    if (Date.now() - renewedAtRef.current < 30_000) return; // failed again right away = real problem, don't loop
+    renewedAtRef.current = Date.now();
+    switchQuality(materialId, variantId);
+  };
+
   const onStall = () => {
     const next = stalls + 1;
     setStalls(next);
@@ -375,6 +386,7 @@ export default function Player() {
             onPause={(e) => sendWatch(cur.id, e.currentTarget)}
             onEnded={(e) => sendWatch(cur.id, e.currentTarget)}
             onWaiting={onStall}
+            onError={() => onVideoError(cur.id)}
             onLoadedMetadata={(e) => {
               const v = e.currentTarget;
               v.playbackRate = speed;

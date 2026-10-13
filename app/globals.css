@@ -842,3 +842,21 @@ video { width: 100%; border-radius: 12px; background: #000; }
   .ib-topic .actions { width: 100%; padding-left: 40px; }
   .att-editor { padding-left: 14px; }
 }
+
+/* ── 🔴 Class recorder (src/components/ClassRecorder.tsx) — floats bottom-right on every panel page ── */
+.recorder { position: fixed; right: 18px; bottom: 18px; z-index: 90; width: 340px; max-width: calc(100vw - 32px);
+  background: #fff; border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 14px 16px; font-size: .86rem; }
+.recorder-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.recorder-title { font-weight: 600; color: var(--text); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recorder-steps { margin: 6px 0 12px; padding-left: 18px; color: var(--muted); font-size: .8rem; line-height: 1.45; }
+.recorder-steps li { margin-bottom: 4px; }
+.recorder-warn { margin: 10px 0 0; padding: 8px 10px 8px 26px; background: var(--amber-bg); color: #6b4a00; border-radius: 8px; font-size: .78rem; }
+.recorder-warn li + li { margin-top: 4px; }
+.recorder-offline { margin: 0 0 6px; padding: 6px 10px; background: var(--amber-bg); color: #6b4a00; border-radius: 8px; font-size: .76rem; }
+.recorder-orphan { margin-top: 10px; padding: 10px; background: var(--amber-bg); border-radius: 10px; font-size: .8rem; }
+.recorder-orphan:first-child { margin-top: 0; }
+.rec-dot { color: var(--red); font-variant-numeric: tabular-nums; }
+.rec-dot::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--red); margin-right: 6px; animation: recpulse 1.2s ease-in-out infinite; }
+@keyframes recpulse { 50% { opacity: .25; } }
+.btn-stop { background: var(--red); box-shadow: none; } .btn-stop:hover { background: #b91c1c; }
+.btn-rec { background: #fff; color: var(--red); border: 1px solid #f5c2c2; box-shadow: none; } .btn-rec:hover { background: var(--red-bg); }

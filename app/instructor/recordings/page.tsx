@@ -42,6 +42,10 @@ export default function Recordings() {
   return (<>
     <div className="card">
       <h2 style={{ marginTop: 0 }}>🎥 Upload a class recording</h2>
+      <div className="hint">
+        <b>Record live instead:</b> open the batch → 📅 Classes → <b>🔴 Record</b>. It records your screen, the meeting sound and your
+        microphone, uploads while you teach and appears here when you stop — no file to upload afterwards.
+      </div>
       {me && !me.permissions.publish_recordings && (
         <div className="hint">Your uploads are checked by an admin before students can see them.</div>
       )}

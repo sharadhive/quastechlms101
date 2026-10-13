@@ -8,10 +8,13 @@ export type JobType =
   | 'EMAIL_ENROLLED'
   | 'EMAIL_FEE_REMINDER'
   | 'EMAIL_SESSION_REMINDER'
+  | 'EMAIL_SESSION_CHANGED'
   | 'EMAIL_RESULT_PUBLISHED'
   | 'CAMPAIGN_SEND'
   | 'RENDER_CERTIFICATE_PDF'
-  | 'RENDER_RECEIPT_PDF';
+  | 'RENDER_RECEIPT_PDF'
+  | 'VIDEO_TRANSCODE'
+  | 'VIDEO_TRANSCODE_RECORDING';
 
 export async function enqueue(type: JobType, payload: Record<string, unknown>, runAt?: Date) {
   // Never keep a plain-text password in the job table — encrypt it (decrypted only when mailing)

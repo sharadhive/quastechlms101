@@ -31,13 +31,13 @@ export const localDriver: StorageDriver = {
     await fs.rm(localPath(key), { force: true });
     await fs.rm(localPath(key) + '.part', { force: true });
   },
-  async presignPut(key, contentType, maxBytes) {
-    const token = signPayload({ key, contentType, maxBytes, op: 'put' }, UPLOAD_URL_TTL_SEC);
+  async presignPut(key, contentType, maxBytes, ttlSec = UPLOAD_URL_TTL_SEC) {
+    const token = signPayload({ key, contentType, maxBytes, op: 'put' }, ttlSec);
     return {
       url: `/api/uploads/local/${token}`,
       method: 'PUT',
       key,
-      expiresInSec: UPLOAD_URL_TTL_SEC,
+      expiresInSec: ttlSec,
       chunkSize: LOCAL_UPLOAD_CHUNK,
     };
   },

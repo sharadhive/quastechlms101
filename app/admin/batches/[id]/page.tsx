@@ -4,12 +4,10 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/client/api';
 import { Empty } from '@/components/ui';
+import { useClassRecorder } from '@/components/ClassRecorder';
+import { RescheduleForm, cancelSession, withClashCheck, fmtWhen } from '@/components/SessionControls';
 
 const toDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : '');
-const toLocalDT = (d: string) => {
-  const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset());
-  return x.toISOString().slice(0, 16);
-};
 
 export default function BatchDetail() {
   const { id } = useParams<{ id: string }>();
@@ -18,7 +16,8 @@ export default function BatchDetail() {
   const [instructors, setInstructors] = useState<any[]>([]);
   const [edit, setEdit] = useState<any>(null);
   const [f, setF] = useState({ title: '', scheduledAt: '', meetLink: '' });
-  const [resched, setResched] = useState<Record<string, string>>({});
+  const [resched, setResched] = useState<string | null>(null);
+  const rec = useClassRecorder();
   const [err, setErr] = useState(''); const [ok, setOk] = useState('');
 
   const load = () => api(`/api/batches/${id}`).then((d) => setB(d.batch)).catch((e) => setErr(e.message));
@@ -31,10 +30,20 @@ export default function BatchDetail() {
     setErr(''); setOk('');
     try { await fn(); setOk(msg); await load(); } catch (e: any) { setErr(e.message); }
   };
-  const createSession = () => act(async () => {
-    await api(`/api/batches/${id}/sessions`, { method: 'POST', json: { title: f.title, scheduledAt: new Date(f.scheduledAt).toISOString(), meetLink: f.meetLink || undefined } });
-    setF({ title: '', scheduledAt: '', meetLink: '' });
-  }, 'Class scheduled ✓ — students get reminders 24h and 1h before');
+  const createSession = async () => {
+    setErr(''); setOk('');
+    try {
+      const r = await withClashCheck((force) => api(`/api/batches/${id}/sessions`, { method: 'POST', json: {
+        title: f.title, scheduledAt: new Date(f.scheduledAt).toISOString(), meetLink: f.meetLink || undefined, ...(force ? { force: true } : {}),
+      } }));
+      if (!r) return;
+      setF({ title: '', scheduledAt: '', meetLink: '' });
+      setOk('Class scheduled ✓ — students get reminders 24h and 1h before');
+      await load();
+    } catch (e: any) { setErr(e.message); }
+  };
+  const done = (m: string) => { setErr(''); setOk(m); void load(); };
+  const fail = (m: string) => { setOk(''); setErr(m); };
   const saveEdit = () => act(async () => {
     await api(`/api/batches/${id}`, { method: 'PATCH', json: {
       name: edit.name,
@@ -134,16 +143,20 @@ export default function BatchDetail() {
           <thead><tr><th>Class</th><th>When</th><th>Link</th><th></th></tr></thead>
           <tbody>{upcoming.map((s: any) => (
             <tr key={s.id}>
-              <td><b>{s.title}</b></td>
-              <td>{new Date(s.scheduledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</td>
+              <td>
+                <b>{s.title}</b>
+                {rec.recordingSessionId === s.id && <span className="badge red" style={{ marginLeft: 6 }}>● recording</span>}
+                {resched === s.id && (
+                  <RescheduleForm s={s} onSaved={(m) => { setResched(null); done(m); }} onError={fail} onClose={() => setResched(null)} />
+                )}
+              </td>
+              <td>{fmtWhen(s.scheduledAt)}</td>
               <td>{s.meetLink ? <a href={s.meetLink} target="_blank">Join ↗</a> : <span className="muted">—</span>}</td>
               <td><div className="actions" style={{ gap: 6 }}>
-                <input type="datetime-local" style={{ margin: 0, maxWidth: 200 }} value={resched[s.id] ?? toLocalDT(s.scheduledAt)}
-                  onChange={(e) => setResched({ ...resched, [s.id]: e.target.value })} />
-                <button className="btn btn-ghost btn-sm" disabled={!resched[s.id]}
-                  onClick={() => act(() => api(`/api/sessions/${s.id}`, { method: 'PATCH', json: { scheduledAt: new Date(resched[s.id]).toISOString() } }), 'Class rescheduled ✓ — reminders updated')}>Reschedule</button>
-                <button className="btn btn-danger btn-sm"
-                  onClick={() => confirm(`Cancel “${s.title}”?`) && act(() => api(`/api/sessions/${s.id}`, { method: 'DELETE' }), 'Class cancelled')}>Cancel</button>
+                <button className="btn btn-rec btn-sm" title="Record your screen, the meeting sound and your microphone"
+                  onClick={() => rec.open({ batchId: id, sessionId: s.id, title: `${s.title} — ${new Date(s.scheduledAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` })}>🔴 Record</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setResched(resched === s.id ? null : s.id)}>Reschedule</button>
+                <button className="btn btn-danger btn-sm" onClick={() => cancelSession(s, done, fail)}>Cancel</button>
               </div></td>
             </tr>
           ))}</tbody>

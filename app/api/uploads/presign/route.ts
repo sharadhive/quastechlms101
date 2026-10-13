@@ -12,6 +12,8 @@ const schema = z.object({
   contentType: z.string().min(1).max(200),
   sizeBytes: z.number().int().positive(),
   purpose: z.enum(['material', 'recording', 'assignment', 'banner', 'document', 'thumbnail']),
+  /** class recorder: the file grows while the class runs, so its link must outlive a long class + a late resume */
+  live: z.boolean().optional(),
 });
 
 export const POST = withHandler(async (req: NextRequest) => {
@@ -31,6 +33,7 @@ export const POST = withHandler(async (req: NextRequest) => {
     throw badRequest(`File is too large (max ${formatBytes(rule.maxBytes)}).`);
 
   const key = `org/${session.organizationId}/${body.purpose}/${crypto.randomUUID()}.${ext}`;
-  const upload = await getStorage().presignPut(key, body.contentType, body.sizeBytes);
+  const ttlSec = body.live && body.purpose === 'recording' ? 24 * 3600 : undefined;
+  const upload = await getStorage().presignPut(key, body.contentType, body.sizeBytes, ttlSec);
   return NextResponse.json({ upload });
 });

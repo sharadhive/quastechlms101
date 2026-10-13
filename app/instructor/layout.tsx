@@ -1,4 +1,5 @@
 import Shell, { NavGroup } from '@/components/Shell';
+import ClassRecorderProvider from '@/components/ClassRecorder';
 
 const groups: NavGroup[] = [
   { items: [{ href: '/instructor', label: 'Dashboard', icon: 'home' }] },
@@ -15,5 +16,10 @@ const groups: NavGroup[] = [
 ];
 
 export default function InstructorLayout({ children }: { children: React.ReactNode }) {
-  return <Shell title="Instructor Panel" groups={groups}>{children}</Shell>;
+  return (
+    <Shell title="Instructor Panel" groups={groups}>
+      {/* the class recorder lives here so it keeps recording while you move between pages */}
+      <ClassRecorderProvider>{children}</ClassRecorderProvider>
+    </Shell>
+  );
 }

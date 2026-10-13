@@ -97,6 +97,8 @@ curl -b jar -X POST $B/api/enrollments/manual -H 'Content-Type: application/json
 
 ## Deployment (no Docker — SRS Ch. 7)
 
+> **Step-by-step guide for Render, Railway, cPanel and Vercel — with and without Git: [`DEPLOYMENT.md`](DEPLOYMENT.md).**
+
 **cPanel:** MySQL DB in cPanel → Git clone → *Setup Node.js App* (Node 20) → `npm install && npx prisma migrate deploy && npm run build` → cron each minute: `curl -s -H "x-cron-key: <CRON_KEY>" https://domain.com/api/cron/process` → restart.
 
 **VPS:** Node 20 + MySQL + Nginx → same build → `pm2 start "npm start" --name quastech && pm2 start "npm run worker" --name quastech-worker && pm2 save`.

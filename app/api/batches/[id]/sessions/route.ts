@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { withHandler, notFound, forbidden } from '@/lib/utils/errors';
+import { withHandler, notFound, forbidden, ApiError } from '@/lib/utils/errors';
 import { parseBody } from '@/lib/utils/validate';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
 import { can } from '@/lib/auth/permissions';
-import { queueSessionReminders } from '@/lib/sessions';
+import { queueSessionReminders, findClash, fmtClassTime } from '@/lib/sessions';
 
 const schema = z.object({
   title: z.string().min(1).optional(),       // optional — auto-set from topic name if not provided
@@ -13,6 +13,7 @@ const schema = z.object({
   meetLink: z.string().url().optional(),      // manual Zoom/Meet paste — v1 feature
   moduleId: z.string().min(1).optional(),     // optional — assign to a module
   sectionId: z.string().min(1).optional(),    // optional — assign to a specific topic
+  force: z.boolean().optional(),              // schedule even if another class is less than an hour away
 });
 
 export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: string } }) => {
@@ -67,6 +68,13 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
   if (!title) title = 'Class Session';
 
   const scheduledAt = new Date(data.scheduledAt);
+  if (!data.force) {
+    const clash = await findClash({ batchId: batch.id, instructorId: batch.instructorId, at: scheduledAt });
+    if (clash)
+      throw new ApiError(409,
+        `“${clash.title}” (${clash.batch.name}) is at ${fmtClassTime(clash.scheduledAt)} — less than an hour from this time.`,
+        'SCHEDULE_CONFLICT');
+  }
   const cls = await prisma.classSession.create({
     data: { batchId: batch.id, title, scheduledAt, meetLink: data.meetLink },
   });

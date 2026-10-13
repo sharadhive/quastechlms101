@@ -6,6 +6,8 @@ import { api } from '@/lib/client/api';
 import { useMe } from '@/lib/client/useMe';
 import { Empty } from '@/components/ui';
 import AttendanceEditor, { AttendanceList } from '@/components/AttendanceEditor';
+import { useClassRecorder } from '@/components/ClassRecorder';
+import { RescheduleForm, cancelSession, withClashCheck } from '@/components/SessionControls';
 
 type Tab = 'take' | 'syllabus' | 'classes' | 'students';
 
@@ -17,6 +19,7 @@ const localDate = (d = new Date()) => { const x = new Date(d); x.setMinutes(x.ge
 export default function InstructorBatch() {
   const { id } = useParams<{ id: string }>();
   const me = useMe();
+  const rec = useClassRecorder();
   const [b, setB] = useState<any>(null);
   const [tab, setTab] = useState<Tab>('take');
   const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
@@ -43,7 +46,14 @@ export default function InstructorBatch() {
             {b.course.title}{b.batchTime ? ` · 🕐 ${b.batchTime}` : ''}{b.schedule ? ` · ${b.schedule.toLowerCase()} batch` : ''}
           </div>
         </div>
-        {tab !== 'take' && <button className="btn" onClick={() => setTab('take')}>✅ Take today&apos;s class</button>}
+        <div className="actions">
+          <button className="btn btn-rec" title="Record your screen, the meeting sound and your microphone"
+            onClick={() => {
+              const today = b.sessions.find((s: any) => sameDay(new Date(s.scheduledAt), new Date()) && !(s.attendance?.total > 0));
+              rec.open({ batchId: b.id, sessionId: today?.id, title: `${today?.title ?? b.name} — ${dShort(new Date())}` });
+            }}>🔴 Record a class</button>
+          {tab !== 'take' && <button className="btn" onClick={() => setTab('take')}>✅ Take today&apos;s class</button>}
+        </div>
       </div>
       <div className="ib-stats">
         <div className="ib-stat">
@@ -291,25 +301,30 @@ function Classes({ b, batchId, canSchedule, onDone, onError }: {
 }) {
   const [f, setF] = useState({ sectionId: '', title: '', scheduledAt: '', meetLink: '' });
   const [editing, setEditing] = useState<string | null>(null);
-  const [resched, setResched] = useState<{ id: string; at: string } | null>(null);
+  const [resched, setResched] = useState<string | null>(null);
+  const rec = useClassRecorder();
   const now = Date.now();
   const upcoming = b.sessions.filter((s: any) => new Date(s.scheduledAt).getTime() > now - 2 * 3600_000 && !(s.attendance?.total > 0));
   const past = b.sessions.filter((s: any) => !upcoming.includes(s)).slice().reverse();
 
   const run = async (fn: () => Promise<any>, m: string) => { try { await fn(); onDone(m); } catch (e: any) { onError(e.message); } };
-  const schedule = () => run(async () => {
-    await api(`/api/batches/${batchId}/sessions`, { method: 'POST', json: {
-      title: f.title || undefined, scheduledAt: new Date(f.scheduledAt).toISOString(),
-      meetLink: f.meetLink || undefined, sectionId: f.sectionId || undefined,
-    } });
-    setF({ sectionId: '', title: '', scheduledAt: '', meetLink: '' });
-  }, 'Class scheduled ✓ — students get reminders 24 h and 1 h before');
+  const schedule = async () => {
+    try {
+      const r = await withClashCheck((force) => api(`/api/batches/${batchId}/sessions`, { method: 'POST', json: {
+        title: f.title || undefined, scheduledAt: new Date(f.scheduledAt).toISOString(),
+        meetLink: f.meetLink || undefined, sectionId: f.sectionId || undefined, ...(force ? { force: true } : {}),
+      } }));
+      if (!r) return;
+      setF({ sectionId: '', title: '', scheduledAt: '', meetLink: '' });
+      onDone('Class scheduled ✓ — students get reminders 24 h and 1 h before');
+    } catch (e: any) { onError(e.message); }
+  };
   const startAndJoin = async (s: any) => {
     const w = s.meetLink ? window.open('', '_blank') : null;
     try {
       await api(`/api/sessions/${s.id}/start`, { method: 'POST' });
       if (w && s.meetLink) w.location.href = s.meetLink;
-      onDone(`“${s.title}” started. After class, use ✅ Take a class to save topics and attendance.`);
+      onDone(`“${s.title}” started. Press 🔴 Record to record it. After class, use ✅ Take a class to save topics and attendance.`);
     } catch (e: any) { w?.close(); onError(e.message); }
   };
 
@@ -348,24 +363,20 @@ function Classes({ b, batchId, canSchedule, onDone, onError }: {
           <span className="st" style={{ fontSize: '.7rem' }}>📅</span>
           <div className="grow">
             <b>{s.title}</b>
-            <div className="s">{dTime(s.scheduledAt)}{s.topicTitles?.length ? ` · ${s.topicTitles.join(', ')}` : ''}{s.startedAt ? ' · started' : ''}</div>
-            {resched && resched.id === s.id && (
-              <div className="actions" style={{ marginTop: 6 }}>
-                <input type="datetime-local" value={resched.at} onChange={(e) => setResched({ id: s.id, at: e.target.value })} style={{ margin: 0, maxWidth: 220 }} />
-                <button className="btn btn-sm" disabled={!resched.at} onClick={() => {
-                  const at = resched.at;
-                  run(async () => {
-                    await api(`/api/sessions/${s.id}`, { method: 'PATCH', json: { scheduledAt: new Date(at).toISOString() } }); setResched(null);
-                  }, 'Class moved ✓ — reminders updated');
-                }}>Save</button>
-                <button className="linkbtn" onClick={() => setResched(null)}>cancel</button>
-              </div>
+            <div className="s">
+              {dTime(s.scheduledAt)}{s.topicTitles?.length ? ` · ${s.topicTitles.join(', ')}` : ''}{s.startedAt ? ' · started' : ''}
+              {rec.recordingSessionId === s.id && <span className="badge red" style={{ marginLeft: 6 }}>● recording</span>}
+            </div>
+            {resched === s.id && (
+              <RescheduleForm s={s} onSaved={(m) => { setResched(null); onDone(m); }} onError={onError} onClose={() => setResched(null)} />
             )}
           </div>
           <div className="actions" style={{ gap: 6 }}>
             <button className="btn btn-sm" onClick={() => startAndJoin(s)}>{s.meetLink ? '▶ Start & join' : '▶ Start class'}</button>
-            {canSchedule && <button className="btn btn-ghost btn-sm" onClick={() => setResched({ id: s.id, at: '' })}>Reschedule</button>}
-            {canSchedule && <button className="linkbtn" onClick={() => confirm(`Cancel “${s.title}”?`) && run(() => api(`/api/sessions/${s.id}`, { method: 'DELETE' }), 'Class cancelled')}>Cancel</button>}
+            <button className="btn btn-rec btn-sm" title="Record your screen, the meeting sound and your microphone"
+              onClick={() => rec.open({ batchId, sessionId: s.id, title: `${s.title} — ${dShort(s.scheduledAt)}` })}>🔴 Record</button>
+            {canSchedule && <button className="btn btn-ghost btn-sm" onClick={() => setResched(resched === s.id ? null : s.id)}>Reschedule</button>}
+            {canSchedule && <button className="linkbtn" onClick={() => cancelSession(s, onDone, onError)}>Cancel</button>}
           </div>
         </div>
       ))}

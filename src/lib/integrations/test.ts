@@ -70,9 +70,23 @@ export async function testIntegration(
         return { ok: true, message: 'Zoom credentials valid — meetings can be created automatically.' };
       }
       case 'STORAGE_S3': {
-        const r = await fetch(String(cfg.endpoint), { method: 'HEAD' }).catch(() => null);
-        if (!r) return { ok: false, message: 'Endpoint unreachable from the server.' };
-        return { ok: true, message: 'Endpoint reachable. Keys are verified on the first upload.' };
+        try {
+          const { S3Client, ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+          const client = new S3Client({
+            endpoint: String(cfg.endpoint).replace(/\/+$/, ''),
+            region: String(cfg.region || 'auto'),
+            credentials: { accessKeyId: String(cfg.accessKeyId), secretAccessKey: String(cfg.secretAccessKey) },
+            forcePathStyle: true,
+          });
+          await client.send(new ListObjectsV2Command({ Bucket: String(cfg.bucket), MaxKeys: 1 }));
+          return { ok: true, message: `Connected to bucket "${cfg.bucket}". Credentials verified.` };
+        } catch (e: any) {
+          const msg = e?.message ?? String(e);
+          if (msg.includes('NoSuchBucket')) return { ok: false, message: `Bucket "${cfg.bucket}" does not exist.` };
+          if (msg.includes('AccessDenied') || msg.includes('InvalidAccessKeyId'))
+            return { ok: false, message: 'Access denied — check your Access Key ID and Secret.' };
+          return { ok: false, message: msg.slice(0, 300) };
+        }
       }
       case 'SMS':
         return { ok: true, message: 'Saved. SMS delivery is verified with the first message sent.' };

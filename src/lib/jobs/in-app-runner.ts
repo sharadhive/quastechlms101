@@ -22,6 +22,20 @@ if (process.env.JOBS_IN_APP !== 'false' && !g.__qsJobsStarted) {
     }
   };
   setTimeout(tick, 5_000);
+
+  // hourly: remove refresh tokens that can never be used again (keeps the table small)
+  const prune = async () => {
+    try {
+      const { pruneRefreshTokens } = await import('../auth/tokens');
+      const n = await pruneRefreshTokens();
+      if (n > 0) console.log(`[jobs] removed ${n} old login token(s)`);
+    } catch (err: any) {
+      console.error('[jobs] token cleanup error:', err?.message ?? err);
+    } finally {
+      setTimeout(prune, 3600_000);
+    }
+  };
+  setTimeout(prune, 60_000);
 }
 
 export {};
