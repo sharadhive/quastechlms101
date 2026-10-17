@@ -16,10 +16,22 @@ const HOME: Record<string, string> = {
   STUDENT: '/app',
 };
 
+// Validate APP_URL once at startup. On cPanel/Passenger the req.nextUrl.origin is always the
+// internal proxy address (e.g. http://127.0.0.1:3000), so APP_URL MUST be set to the real
+// public URL or every redirect will send the browser to localhost.
+const APP_URL = (() => {
+  const raw = process.env.APP_URL?.replace(/\/+$/, ''); // trim trailing slash
+  if (!raw && process.env.NODE_ENV === 'production') {
+    console.warn('[middleware] ⚠ APP_URL is not set — redirects may point to localhost instead of the public domain!');
+  }
+  return raw || '';
+})();
+
 function redirect(req: NextRequest, pathname: string, withNext = false) {
-  const url = req.nextUrl.clone();
-  url.pathname = pathname;
-  url.search = '';
+  // ALWAYS prefer APP_URL. req.nextUrl.origin is the internal proxy address on cPanel/Passenger
+  // (e.g. http://127.0.0.1:3000) and must never reach the browser.
+  const base = APP_URL || req.nextUrl.origin;
+  const url = new URL(pathname, base);
   if (withNext) url.searchParams.set('next', req.nextUrl.pathname);
   return NextResponse.redirect(url);
 }
