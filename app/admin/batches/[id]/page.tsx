@@ -17,6 +17,7 @@ export default function BatchDetail() {
   const [edit, setEdit] = useState<any>(null);
   const [f, setF] = useState({ title: '', scheduledAt: '', meetLink: '' });
   const [resched, setResched] = useState<string | null>(null);
+  const [zoomActive, setZoomActive] = useState(false);
   const rec = useClassRecorder();
   const [err, setErr] = useState(''); const [ok, setOk] = useState('');
 
@@ -24,6 +25,7 @@ export default function BatchDetail() {
   useEffect(() => {
     load();
     api('/api/team?role=INSTRUCTOR').then((d) => setInstructors((d.team ?? []).filter((t: any) => t.isActive))).catch(() => {});
+    api('/api/integrations/zoom-status').then((d) => setZoomActive(d.zoomActive)).catch(() => {});
   }, [id]);
 
   const act = async (fn: () => Promise<any>, msg: string) => {
@@ -34,11 +36,11 @@ export default function BatchDetail() {
     setErr(''); setOk('');
     try {
       const r = await withClashCheck((force) => api(`/api/batches/${id}/sessions`, { method: 'POST', json: {
-        title: f.title, scheduledAt: new Date(f.scheduledAt).toISOString(), meetLink: f.meetLink || undefined, ...(force ? { force: true } : {}),
+        title: f.title, scheduledAt: new Date(f.scheduledAt).toISOString(), ...(!zoomActive && f.meetLink ? { meetLink: f.meetLink } : {}), ...(force ? { force: true } : {}),
       } }));
       if (!r) return;
       setF({ title: '', scheduledAt: '', meetLink: '' });
-      setOk('Class scheduled ✓ — students get reminders 24h and 1h before');
+      setOk(zoomActive ? 'Class scheduled ✓ — Zoom meeting link created automatically! Students get reminders 24h and 1h before.' : 'Class scheduled ✓ — students get reminders 24h and 1h before');
       await load();
     } catch (e: any) { setErr(e.message); }
   };
@@ -131,7 +133,11 @@ export default function BatchDetail() {
       <div className="row">
         <div><label>Title</label><input placeholder="e.g. React — useState & useEffect" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></div>
         <div><label>Date &amp; time</label><input type="datetime-local" value={f.scheduledAt} onChange={(e) => setF({ ...f, scheduledAt: e.target.value })} /></div>
-        <div><label>Zoom / Meet link</label><input placeholder="https://…" value={f.meetLink} onChange={(e) => setF({ ...f, meetLink: e.target.value })} /></div>
+        {zoomActive ? (
+          <div><label>Meeting link</label><div className="hint" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}><span className="badge green">🎥 Zoom auto-link</span> A Zoom meeting link will be created automatically</div></div>
+        ) : (
+          <div><label>Zoom / Meet link</label><input placeholder="https://…" value={f.meetLink} onChange={(e) => setF({ ...f, meetLink: e.target.value })} /></div>
+        )}
       </div>
       <button className="btn" onClick={createSession} disabled={!f.title || !f.scheduledAt}>Schedule class</button>
     </div>

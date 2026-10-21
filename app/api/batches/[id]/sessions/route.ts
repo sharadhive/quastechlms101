@@ -6,11 +6,12 @@ import { parseBody } from '@/lib/utils/validate';
 import { requireRole, tenantScope, ADMIN_ROLES } from '@/lib/auth/rbac';
 import { can } from '@/lib/auth/permissions';
 import { queueSessionReminders, findClash, fmtClassTime } from '@/lib/sessions';
+import { createZoomMeeting } from '@/lib/integrations/zoom';
 
 const schema = z.object({
   title: z.string().min(1).optional(),       // optional — auto-set from topic name if not provided
   scheduledAt: z.string().datetime(),
-  meetLink: z.string().url().optional(),      // manual Zoom/Meet paste — v1 feature
+  meetLink: z.string().url().optional(),      // manual Zoom/Meet paste — only used when Zoom integration is NOT active
   moduleId: z.string().min(1).optional(),     // optional — assign to a module
   sectionId: z.string().min(1).optional(),    // optional — assign to a specific topic
   force: z.boolean().optional(),              // schedule even if another class is less than an hour away
@@ -72,11 +73,29 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
     const clash = await findClash({ batchId: batch.id, instructorId: batch.instructorId, at: scheduledAt });
     if (clash)
       throw new ApiError(409,
-        `“${clash.title}” (${clash.batch.name}) is at ${fmtClassTime(clash.scheduledAt)} — less than an hour from this time.`,
+        `"${clash.title}" (${clash.batch.name}) is at ${fmtClassTime(clash.scheduledAt)} — less than an hour from this time.`,
         'SCHEDULE_CONFLICT');
   }
+
+  // ─── Zoom auto-meeting: create a Zoom meeting if integration is active & no manual link ───
+  let meetLink = data.meetLink;
+  if (!meetLink) {
+    try {
+      const zoom = await createZoomMeeting({
+        topic: `${title} — ${batch.name}`,
+        startTime: scheduledAt.toISOString(),
+        durationMin: 60,
+        organizationId: scope.organizationId,
+      });
+      if (zoom) meetLink = zoom.joinUrl;
+    } catch (e: any) {
+      // Log but don't block session creation — better to create without link than fail entirely
+      console.error('[Zoom] Auto-create meeting failed, session will be created without link:', e.message);
+    }
+  }
+
   const cls = await prisma.classSession.create({
-    data: { batchId: batch.id, title, scheduledAt, meetLink: data.meetLink },
+    data: { batchId: batch.id, title, scheduledAt, meetLink },
   });
 
   // Link topics if any were selected

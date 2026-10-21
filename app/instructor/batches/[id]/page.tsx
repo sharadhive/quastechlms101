@@ -302,7 +302,9 @@ function Classes({ b, batchId, canSchedule, onDone, onError }: {
   const [f, setF] = useState({ sectionId: '', title: '', scheduledAt: '', meetLink: '' });
   const [editing, setEditing] = useState<string | null>(null);
   const [resched, setResched] = useState<string | null>(null);
+  const [zoomActive, setZoomActive] = useState(false);
   const rec = useClassRecorder();
+  useEffect(() => { api('/api/integrations/zoom-status').then((d) => setZoomActive(d.zoomActive)).catch(() => {}); }, []);
   const now = Date.now();
   const upcoming = b.sessions.filter((s: any) => new Date(s.scheduledAt).getTime() > now - 2 * 3600_000 && !(s.attendance?.total > 0));
   const past = b.sessions.filter((s: any) => !upcoming.includes(s)).slice().reverse();
@@ -312,11 +314,11 @@ function Classes({ b, batchId, canSchedule, onDone, onError }: {
     try {
       const r = await withClashCheck((force) => api(`/api/batches/${batchId}/sessions`, { method: 'POST', json: {
         title: f.title || undefined, scheduledAt: new Date(f.scheduledAt).toISOString(),
-        meetLink: f.meetLink || undefined, sectionId: f.sectionId || undefined, ...(force ? { force: true } : {}),
+        ...(!zoomActive && f.meetLink ? { meetLink: f.meetLink } : {}), sectionId: f.sectionId || undefined, ...(force ? { force: true } : {}),
       } }));
       if (!r) return;
       setF({ sectionId: '', title: '', scheduledAt: '', meetLink: '' });
-      onDone('Class scheduled ✓ — students get reminders 24 h and 1 h before');
+      onDone(zoomActive ? 'Class scheduled ✓ — Zoom meeting link created automatically! Students get reminders 24h and 1h before.' : 'Class scheduled ✓ — students get reminders 24 h and 1 h before');
     } catch (e: any) { onError(e.message); }
   };
   const startAndJoin = async (s: any) => {
@@ -350,7 +352,11 @@ function Classes({ b, batchId, canSchedule, onDone, onError }: {
         </div>
         <div className="row">
           <div><label>Title (optional — uses the topic name)</label><input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="e.g. Doubt-clearing session" /></div>
-          <div><label>Zoom / Google Meet link (optional)</label><input value={f.meetLink} onChange={(e) => setF({ ...f, meetLink: e.target.value })} placeholder="https://…" /></div>
+          {zoomActive ? (
+            <div><label>Meeting link</label><div className="hint" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}><span className="badge green">🎥 Zoom auto-link</span> A Zoom meeting link will be created automatically</div></div>
+          ) : (
+            <div><label>Zoom / Google Meet link (optional)</label><input value={f.meetLink} onChange={(e) => setF({ ...f, meetLink: e.target.value })} placeholder="https://…" /></div>
+          )}
         </div>
         <button className="btn" onClick={schedule} disabled={!f.scheduledAt}>Schedule class</button>
       </>)}

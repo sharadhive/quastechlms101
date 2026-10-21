@@ -5,21 +5,37 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Type errors now fail the build (they used to be hidden and let real bugs ship).
-  // Run `npm run typecheck` before building.
+  // Keep current setting for this troubleshooting attempt.
   typescript: { ignoreBuildErrors: true },
+
   eslint: { ignoreDuringBuilds: true },
+
   experimental: {
-    serverComponentsExternalPackages: ['@prisma/client', 'bcryptjs', 'pdfkit', 'nodemailer'],
-    // runs instrumentation.ts on server start → background jobs work without a separate worker
+    // Limit build worker count for shared hosting.
+    cpus: 1,
+
+    // Prefer worker threads to reduce child-process spawning.
+    workerThreads: true,
+
+    serverComponentsExternalPackages: [
+      '@prisma/client',
+      'bcryptjs',
+      'pdfkit',
+      'nodemailer',
+    ],
+
+    // Runs instrumentation.ts on server start.
     instrumentationHook: true,
   },
-  // Force clean build ID to avoid stale cache issues
+
+  // Preserve your existing build ID configuration.
   generateBuildId: async () => `build-${Date.now()}`,
-  // Explicit webpack alias for @/ → ./src/ (cPanel's node_modules symlink can break tsconfig path resolution)
+
+  // Preserve your existing webpack alias.
   webpack: (config) => {
     config.resolve.alias['@'] = path.resolve(__dirname, 'src');
     return config;
   },
 };
+
 export default nextConfig;
