@@ -44,6 +44,7 @@ enum MaterialType {
   ASSIGNMENT
   LINK
   LIVE
+  YOUTUBE
 }
 
 enum EnrollStatus {

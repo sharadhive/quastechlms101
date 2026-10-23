@@ -72,6 +72,7 @@ export const GET = withHandler(
                 marks: sub.status === 'PUBLISHED' ? sub.marks : null, feedback: sub.status === 'PUBLISHED' ? sub.feedback : null }
             : null;
           if (m.type === 'LINK' || m.type === 'LIVE') return { ...rest, externalUrl: q.url ?? null };
+          if (m.type === 'YOUTUBE') return { ...rest, externalUrl: q.url ?? null, quizSchema: { url: q.url, youtubeId: q.youtubeId } };
           if (m.type === 'ASSIGNMENT')
             return { ...rest, assignment: { instructions: q.instructions ?? null, dueAt: q.dueAt ?? null, maxMarks: q.maxMarks ?? null }, mine };
           if (m.type === 'QUIZ')

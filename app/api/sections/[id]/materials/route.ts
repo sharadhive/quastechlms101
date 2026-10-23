@@ -10,7 +10,7 @@ import { keyBelongsTo, extOf } from '@/lib/utils/files';
 import { enqueue } from '@/lib/jobs/queue';
 
 const schema = z.object({
-  type: z.enum(['VIDEO', 'PDF', 'QUIZ', 'ASSIGNMENT', 'LINK', 'LIVE']),
+  type: z.enum(['VIDEO', 'PDF', 'QUIZ', 'ASSIGNMENT', 'LINK', 'LIVE', 'YOUTUBE']),
   title: z.string().min(1),
   position: z.number().int().nonnegative().optional(),
   fileKey: z.string().optional(),      // from /api/uploads (VIDEO/PDF, optional attachment for ASSIGNMENT)
@@ -55,6 +55,11 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
   if (data.type === 'PDF' && !data.fileKey) throw badRequest('Upload the PDF file first');
   if (data.type === 'QUIZ' && !data.quizSchema) throw badRequest('Add at least one question to the quiz');
   if (data.type === 'LINK' && !data.externalUrl) throw badRequest('Enter the link URL');
+  if (data.type === 'YOUTUBE' && !data.externalUrl) throw badRequest('Enter the YouTube video URL');
+  if (data.type === 'YOUTUBE' && data.externalUrl) {
+    const ytMatch = data.externalUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+    if (!ytMatch) throw badRequest('Invalid YouTube URL — please paste a valid YouTube video link');
+  }
   if (data.fileKey) {
     if (!keyBelongsTo(session.organizationId, data.fileKey, ['material', 'document']))
       throw badRequest('Invalid file — please upload again');
@@ -68,6 +73,11 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
   if (data.type === 'QUIZ') meta = data.quizSchema;
   else if (data.type === 'ASSIGNMENT') meta = data.assignment ?? {};
   else if (data.externalUrl) meta = { url: data.externalUrl };
+  // For YOUTUBE, also store the extracted video ID for easy embed
+  if (data.type === 'YOUTUBE' && data.externalUrl) {
+    const ytMatch = data.externalUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+    if (ytMatch) meta = { url: data.externalUrl, youtubeId: ytMatch[1] };
+  }
 
   const position =
     data.position ?? (await prisma.material.count({ where: { sectionId } }));

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { api, uploadFile, ACCEPT } from '@/lib/client/api';
 import { formatBytes } from '@/lib/utils/files';
 
-const TYPE_ICON: Record<string, string> = { VIDEO: '🎬', PDF: '📄', QUIZ: '❓', ASSIGNMENT: '📝', LINK: '🔗', LIVE: '📡' };
+const TYPE_ICON: Record<string, string> = { VIDEO: '🎬', PDF: '📄', QUIZ: '❓', ASSIGNMENT: '📝', LINK: '🔗', LIVE: '📡', YOUTUBE: '📺' };
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export default function Player() {
@@ -465,6 +465,29 @@ export default function Player() {
             {!doneSet.has(cur.id) && <button className="btn btn-ghost btn-sm" onClick={() => markDone()}>Mark complete</button>}
           </div>
         </>)}
+
+        {/* ── YOUTUBE ── */}
+        {cur && tab === 'content' && cur.type === 'YOUTUBE' && (() => {
+          const ytUrl = cur.externalUrl || cur.quizSchema?.url || '';
+          const m = ytUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+          const videoId = cur.quizSchema?.youtubeId || (m ? m[1] : null);
+          if (!videoId) return <p className="err">⚠ Invalid YouTube URL stored for this lesson.</p>;
+          return (<>
+            <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 10, background: '#000' }}>
+              <iframe
+                src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`}
+                title={cur.title}
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+            <div className="actions" style={{ marginTop: 10 }}>
+              {!doneSet.has(cur.id) && <button className="btn btn-sm" onClick={() => markDone()}>Mark as watched ✓</button>}
+            </div>
+          </>);
+        })()}
 
         {/* ── QUIZ ── */}
         {cur && tab === 'content' && cur.type === 'QUIZ' && !quiz && !quizResult && (

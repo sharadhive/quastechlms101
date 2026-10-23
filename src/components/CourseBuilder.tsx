@@ -6,7 +6,7 @@ import { api, uploadFile, ACCEPT } from '@/lib/client/api';
 import { formatBytes } from '@/lib/utils/files';
 import AddLesson from './AddLesson';
 
-const TYPE_ICON: Record<string, string> = { VIDEO: '🎬', PDF: '📄', QUIZ: '❓', ASSIGNMENT: '📝', LINK: '🔗', LIVE: '📡' };
+const TYPE_ICON: Record<string, string> = { VIDEO: '🎬', PDF: '📄', QUIZ: '❓', ASSIGNMENT: '📝', LINK: '🔗', LIVE: '📡', YOUTUBE: '📺' };
 const fmtDur = (s?: number | null) => (s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : '');
 
 type Tab = 'details' | 'curriculum' | 'publish';
@@ -30,6 +30,7 @@ export default function CourseBuilder({ courseId, panel }: { courseId: string; p
   const [quality, setQuality] = useState<Record<string, { label?: string; file?: File; pct?: number }>>({});
   const [err, setErr] = useState(''); const [ok, setOk] = useState('');
   const [loadErr, setLoadErr] = useState('');
+  const [ytPreview, setYtPreview] = useState<{ title: string; videoId: string } | null>(null);
 
   const load = async () => {
     try {
@@ -90,6 +91,13 @@ export default function CourseBuilder({ courseId, panel }: { courseId: string; p
   };
   const preview = async (m: any) => {
     if (m.type === 'LINK' || m.type === 'LIVE') { window.open(m.quizSchema?.url, '_blank'); return; }
+    if (m.type === 'YOUTUBE') {
+      const ytUrl = m.quizSchema?.url || '';
+      const match = ytUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+      const videoId = m.quizSchema?.youtubeId || (match ? match[1] : null);
+      if (videoId) { setYtPreview({ title: m.title, videoId }); } else { setErr('Invalid YouTube URL for this lesson'); }
+      return;
+    }
     const w = window.open('', '_blank');
     try { const d = await api(`/api/materials/${m.id}/stream-url`); if (w) w.location.href = d.url; }
     catch (e: any) { w?.close(); setErr(e.message); }
@@ -142,6 +150,27 @@ export default function CourseBuilder({ courseId, panel }: { courseId: string; p
   );
 
   return (<>
+    {ytPreview && (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,.85)', display: 'flex', flexDirection: 'column', padding: 16, alignItems: 'center', justifyContent: 'center' }}
+        onClick={() => setYtPreview(null)}>
+        <div style={{ width: '100%', maxWidth: 900 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: '.95rem' }}>📺 {ytPreview.title}</span>
+            <button className="btn btn-sm" onClick={() => setYtPreview(null)} style={{ background: 'rgba(255,255,255,.15)', border: 'none', color: '#fff' }}>✕ Close</button>
+          </div>
+          <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 10, background: '#000' }}>
+            <iframe
+              src={`https://www.youtube.com/embed/${ytPreview.videoId}?rel=0&modestbranding=1&autoplay=1`}
+              title={ytPreview.title}
+              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      </div>
+    )}
     {header}
     {tab === 'details' && isAdmin && <DetailsTab course={course} onSaved={() => { flash('Details saved ✓'); load(); }} onError={setErr} />}
     {tab === 'publish' && isAdmin && (

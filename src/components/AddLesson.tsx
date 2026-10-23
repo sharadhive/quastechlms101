@@ -6,6 +6,7 @@ import QuizBuilder, { defaultQuiz, toQuizSchema } from './QuizBuilder';
 
 const TYPES = [
   { key: 'VIDEO', label: '🎬 Video' },
+  { key: 'YOUTUBE', label: '📺 YouTube' },
   { key: 'PDF', label: '📄 PDF / Notes' },
   { key: 'QUIZ', label: '❓ Quiz' },
   { key: 'ASSIGNMENT', label: '📝 Assignment' },
@@ -16,6 +17,7 @@ type LessonType = (typeof TYPES)[number]['key'];
 
 const HELP: Record<LessonType, string> = {
   VIDEO: 'Upload an MP4 (best), MOV, WebM or MKV. Large files are sent in small parts and resume automatically if the internet drops.',
+  YOUTUBE: 'Paste a YouTube video link — it plays directly inside the LMS. No upload needed.',
   PDF: 'Upload notes, slides or a handout as PDF. Students read it inside the player.',
   QUIZ: 'Multiple-choice questions, marked automatically. Tick every correct option — or upload all the questions at once from an Excel / CSV sheet.',
   ASSIGNMENT: 'Students upload a file (PDF, Word, zip, image…). You mark it in the Evaluation queue.',
@@ -56,7 +58,8 @@ export default function AddLesson({ sectionId, label, onAdded, onCancel }: {
 
   const needsFile = type === 'VIDEO' || type === 'PDF';
   const busy = progress !== null;
-  const canSave = !!title.trim() && (!needsFile || !!file) && ((type !== 'LINK' && type !== 'LIVE') || /^https?:\/\//.test(url));
+  const needsUrl = type === 'LINK' || type === 'LIVE' || type === 'YOUTUBE';
+  const canSave = !!title.trim() && (!needsFile || !!file) && (!needsUrl || /^https?:\/\//.test(url));
 
   const pick = (f: File | null) => {
     setFile(f); setErr('');
@@ -68,7 +71,7 @@ export default function AddLesson({ sectionId, label, onAdded, onCancel }: {
     try {
       const json: any = { type, title: title.trim() };
       if (type === 'QUIZ') json.quizSchema = toQuizSchema(quiz);
-      if (type === 'LINK' || type === 'LIVE') json.externalUrl = url.trim();
+      if (type === 'LINK' || type === 'LIVE' || type === 'YOUTUBE') json.externalUrl = url.trim();
       if (type === 'ASSIGNMENT')
         json.assignment = {
           instructions: assign.instructions || undefined,
@@ -122,9 +125,15 @@ export default function AddLesson({ sectionId, label, onAdded, onCancel }: {
       <input value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)}
         placeholder={type === 'QUIZ' ? 'e.g. HTML basics — quick test' : type === 'ASSIGNMENT' ? 'e.g. Build a landing page' : 'e.g. Introduction to HTML'} />
 
-      {(type === 'LINK' || type === 'LIVE') && (<>
-        <label>{type === 'LIVE' ? 'Meeting link' : 'URL'}</label>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
+      {(type === 'LINK' || type === 'LIVE' || type === 'YOUTUBE') && (<>
+        <label>{type === 'LIVE' ? 'Meeting link' : type === 'YOUTUBE' ? 'YouTube video URL' : 'URL'}</label>
+        <input value={url} onChange={(e) => setUrl(e.target.value)}
+          placeholder={type === 'YOUTUBE' ? 'https://www.youtube.com/watch?v=... or https://youtu.be/...' : 'https://…'} />
+        {type === 'YOUTUBE' && url && /youtu/.test(url) && (() => {
+          const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+          return m ? <div className="hint" style={{ color: 'var(--brand)', marginTop: 4 }}>✓ Video ID detected: {m[1]} — will play inside the LMS</div>
+                   : <div className="hint" style={{ color: 'var(--danger)', marginTop: 4 }}>⚠ Could not detect a YouTube video ID from this URL</div>;
+        })()}
       </>)}
 
       {type === 'QUIZ' && (
