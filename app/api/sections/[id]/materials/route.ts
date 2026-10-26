@@ -82,9 +82,12 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
   const position =
     data.position ?? (await prisma.material.count({ where: { sectionId } }));
 
-  // Videos start as 'processing' and become 'published' after FFmpeg conversion.
+  // Videos: MP4/M4V files are already browser-ready → publish immediately (like recordings).
+  // Non-MP4 video formats (WebM, MOV, MKV) need FFmpeg transcoding → start as 'processing'.
   // PDFs and everything else publish immediately.
   const isVideo = data.type === 'VIDEO' && data.fileKey;
+  const videoExt = isVideo ? (extOf(data.fileKey!) ?? '').toLowerCase() : '';
+  const needsTranscode = isVideo && !['mp4', 'm4v'].includes(videoExt);
 
   const material = await prisma.material.create({
     data: {
@@ -97,12 +100,12 @@ export const POST = withHandler(async (req: NextRequest, ctx: { params: { id: st
       durationSec: data.durationSec,
       isDownloadable: data.isDownloadable ?? false,
       quizSchema: meta,
-      status: isVideo ? 'processing' : 'published',
+      status: needsTranscode ? 'processing' : 'published',
     },
   });
 
-  // Enqueue FFmpeg transcode job for video uploads
-  if (isVideo) {
+  // Enqueue FFmpeg transcode job only for non-MP4 video formats that need conversion
+  if (needsTranscode) {
     await enqueue('VIDEO_TRANSCODE', {
       materialId: material.id,
       organizationId: session.organizationId,
