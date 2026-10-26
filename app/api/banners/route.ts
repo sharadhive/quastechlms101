@@ -34,19 +34,21 @@ export const POST = withHandler(async (req: NextRequest) => {
   return NextResponse.json({ banner }, { status: 201 });
 });
 
-/** Any authenticated user (student home carousel) — active banners with signed image URLs. */
+/** Any authenticated user — admins see all banners; students see only active ones with valid dates. */
 export const GET = withHandler(async (req: NextRequest) => {
   const session = await requireSession(req);
+  const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'BRANCH_ADMIN'].includes(session.role);
   const now = new Date();
-  const banners = await prisma.banner.findMany({
-    where: {
-      organizationId: session.organizationId,
-      isActive: true,
-      OR: [{ startsAt: null }, { startsAt: { lte: now } }],
-      AND: [{ OR: [{ endsAt: null }, { endsAt: { gte: now } }] }],
-    },
-    orderBy: { position: 'asc' },
-  });
+
+  const where: any = { organizationId: session.organizationId };
+  if (!isAdmin) {
+    // Students only see active banners within their date range
+    where.isActive = true;
+    where.OR = [{ startsAt: null }, { startsAt: { lte: now } }];
+    where.AND = [{ OR: [{ endsAt: null }, { endsAt: { gte: now } }] }];
+  }
+
+  const banners = await prisma.banner.findMany({ where, orderBy: { position: 'asc' } });
   const storage = getStorage();
   const withUrls = await Promise.all(
     banners.map(async (b) => ({ ...b, imageUrl: await storage.signedGetUrl(b.imageKey, 3600) })),

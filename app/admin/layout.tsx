@@ -25,6 +25,7 @@ const groups: NavGroup[] = [
   { title: 'Organisation', items: [
     { href: '/admin/branches', label: 'Branches', icon: 'pin' },
     { href: '/admin/analytics', label: 'Analytics', icon: 'chart' },
+    { href: '/admin/settings', label: 'My Account', icon: 'shield' },
   ]},
   { title: 'Super Admin', superAdminOnly: true, items: [
     { href: '/admin/integrations', label: 'Integrations', icon: 'plug' },

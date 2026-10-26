@@ -32,15 +32,16 @@ export default function CourseBuilder({ courseId, panel }: { courseId: string; p
   const [loadErr, setLoadErr] = useState('');
   const [ytPreview, setYtPreview] = useState<{ title: string; videoId: string } | null>(null);
 
+  const loadLibrary = () => api('/api/modules').then((d) => setLibrary(d.modules)).catch(() => {});
   const load = async () => {
     try {
       const d = await api(`/api/courses/${courseId}`);
       setCourse(d.course); setAccess(d.access);
     } catch (e: any) { setLoadErr(e.message); }
+    await loadLibrary();
   };
   useEffect(() => {
     load();
-    api('/api/modules').then((d) => setLibrary(d.modules)).catch(() => {});
   }, [courseId]);
 
   const flash = (m: string) => { setOk(m); setErr(''); setTimeout(() => setOk(''), 4000); };
